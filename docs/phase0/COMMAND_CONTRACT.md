@@ -43,3 +43,10 @@
 - `OUT_OF_BOUNDS`
 - `CONFLICT_STALE_TARGET`
 - `UNKNOWN_COMMAND`
+
+
+## Acknowledgement Lifecycle
+
+- On successful admission, server responds with `QUEUED`.
+- After tick execution, server emits final command result (`APPLIED` or rejection such as `CONFLICT_STALE_TARGET`).
+- Duplicate `client_command_id` from the same session returns the cached acknowledgement (idempotent behavior).

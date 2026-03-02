@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from madstation.engine import SimulationEngine
-from madstation.protocol import ClientCommand
+from madstation.protocol import ClientCommand, CommandAck, CommandResult
 
 engine = SimulationEngine()
 
@@ -32,7 +32,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             payload = await websocket.receive_json()
-            command = ClientCommand.model_validate(payload)
+            try:
+                command = ClientCommand.model_validate(payload)
+            except Exception:
+                invalid_ack = CommandAck(
+                    client_command_id=str(payload.get("client_command_id", "")),
+                    result=CommandResult.INVALID_PAYLOAD,
+                    tick=engine.tick,
+                )
+                await websocket.send_json(invalid_ack.model_dump())
+                continue
+
             ack = await engine.enqueue_command(session_id, command)
             await websocket.send_json(ack.model_dump())
     except WebSocketDisconnect:

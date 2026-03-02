@@ -12,7 +12,8 @@ class CommandType(str, Enum):
 
 
 class CommandResult(str, Enum):
-    ACCEPTED = "ACCEPTED"
+    QUEUED = "QUEUED"
+    APPLIED = "APPLIED"
     THROTTLED = "THROTTLED"
     CONFLICT_STALE_TARGET = "CONFLICT_STALE_TARGET"
     INVALID_PAYLOAD = "INVALID_PAYLOAD"
@@ -29,11 +30,18 @@ class ClientCommand:
         if not isinstance(payload, dict):
             raise ValueError("command payload must be an object")
 
-        command_type = payload.get("type")
+        raw_client_command_id = payload.get("client_command_id")
+        if not isinstance(raw_client_command_id, str) or not raw_client_command_id.strip():
+            raise ValueError("client_command_id must be a non-empty string")
+
+        raw_payload = payload.get("payload", {})
+        if not isinstance(raw_payload, dict):
+            raise ValueError("payload must be an object")
+
         return cls(
-            client_command_id=str(payload.get("client_command_id", "")),
-            type=CommandType(command_type),
-            payload=payload.get("payload") or {},
+            client_command_id=raw_client_command_id,
+            type=CommandType(payload.get("type")),
+            payload=raw_payload,
         )
 
     def model_dump(self) -> dict[str, Any]:
