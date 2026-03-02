@@ -31,16 +31,21 @@
 
 ## Phase 0 — Simulation Contract Lock (Day 1)
 
-- Create a single source of truth doc (`SIMULATION_SPEC.md`) with:
-  - canonical tick order,
-  - deterministic command ordering,
+- Produce explicit Phase 0 artifacts under `docs/phase0/`:
+  - `PHASE0_SCOPE.md`
+  - `SIMULATION_SPEC.md`
+  - `COMMAND_CONTRACT.md`
+  - `DEFAULT_CONSTANTS.md`
+  - `DELTA_PROTOCOL.md`
+  - `DETERMINISM_TEST_PLAN.md`
+- Lock these decisions in writing:
+  - canonical tick order and deterministic sequencing,
   - first-write-wins tie-break rule,
-  - command schemas,
-  - default placeholder balancing constants,
-  - throttle policy: `1 action / 10 sec / anonymous session`.
-- Define authoritative RNG/seed strategy for deterministic events and NPC tie-breaks.
+  - throttle policy `1 action / 10 sec / anonymous session`,
+  - deterministic RNG/seed lifecycle,
+  - snapshot-on-join + delta protocol.
 
-**Exit criteria:** two independent runs with same seed + command stream produce identical hashes for N ticks.
+**Exit criteria:** two independent runs with same seed + command stream produce identical hashes for N ticks, and all six phase-0 docs are complete and cross-linked.
 
 ## Phase 1 — Engine + Transport Skeleton (Days 2–3)
 
