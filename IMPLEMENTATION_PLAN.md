@@ -162,3 +162,17 @@
   - Mitigation: add metrics + scripted chaos scenarios for tuning.
 
 This plan is intentionally shaped around your priorities: **simulation integrity first**, then progressive complexity.
+
+---
+
+## Phase 1 Bootstrap Notes (Current)
+
+Initial Phase 1 scaffold now targets:
+- FastAPI transport (`/health`, `/ws`),
+- 1Hz loop skeleton,
+- anonymous session issuance,
+- throttled command enqueue,
+- server sequence IDs,
+- snapshot-on-connect + delta broadcast.
+
+This is an engine skeleton for Phase 1 integration and does not yet include full world mutation semantics.
