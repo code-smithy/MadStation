@@ -660,6 +660,50 @@ def test_power_topology_does_not_share_between_disconnected_compartments() -> No
 
     asyncio.run(run())
 
+
+
+def test_phase3_shedding_and_recovery_are_deterministic() -> None:
+    def run_sequence() -> tuple[dict, dict]:
+        engine = SimulationEngine()
+        # one high-priority life support + two lower-priority consumers in same compartment network
+        engine.world_state["machines"] = {
+            "20,20": {"type": "OxygenGenerator", "enabled": True, "consume_kw": 2.0, "rate_per_tick": 2.0},
+            "21,20": {"type": "Light", "enabled": True, "consume_kw": 1.0},
+            "22,20": {"type": "Heater", "enabled": True, "consume_kw": 2.0},
+            "23,20": {"type": "SolarPanel", "enabled": True, "generation_kw": 2.0},
+        }
+
+        # deficit -> lower-tier shedding expected
+        engine._update_power()
+        brownout = dict(engine.world_state["power_state"])
+
+        # recover with deterministic surplus source
+        engine.world_state["machines"]["24,20"] = {"type": "Reactor", "enabled": True, "generation_kw": 10.0}
+        engine._update_power()
+        recovered = dict(engine.world_state["power_state"])
+        return brownout, recovered
+
+    first_brownout, first_recovered = run_sequence()
+    second_brownout, second_recovered = run_sequence()
+
+    assert "20,20" in first_brownout["powered_consumers"]
+    assert "21,20" in first_brownout["unpowered_consumers"]
+    assert "22,20" in first_brownout["unpowered_consumers"]
+    assert first_brownout["disabled_priorities"]
+
+    assert "20,20" in first_recovered["powered_consumers"]
+    assert "21,20" in first_recovered["powered_consumers"]
+    assert "22,20" in first_recovered["powered_consumers"]
+    assert first_recovered["unpowered_consumers"] == []
+    assert first_recovered["disabled_priorities"] == []
+
+    # determinism check: identical setup produces identical states
+    assert first_brownout["powered_consumers"] == second_brownout["powered_consumers"]
+    assert first_brownout["unpowered_consumers"] == second_brownout["unpowered_consumers"]
+    assert first_brownout["disabled_priorities"] == second_brownout["disabled_priorities"]
+    assert first_recovered["powered_consumers"] == second_recovered["powered_consumers"]
+    assert first_recovered["unpowered_consumers"] == second_recovered["unpowered_consumers"]
+    assert first_recovered["disabled_priorities"] == second_recovered["disabled_priorities"]
 def test_power_events_emitted_for_brownout_and_recovery() -> None:
     async def run() -> None:
         engine = SimulationEngine()

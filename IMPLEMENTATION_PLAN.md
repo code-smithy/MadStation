@@ -81,12 +81,13 @@
 - Added power-state observability (`generation`, `demand`, `powered/unpowered`, `disabled_priorities`).
 - Wired oxygen generator production to power availability.
 
-### Phase 3B (in progress)
-- Expand machine classes and tier policy from constants docs.
+### Phase 3B (completed in this iteration)
+- Added configurable tier policy from runtime constants (`power_priority_tiers`) and deterministic tier allocation. ✅
 - Added topology-aware power-network segmentation by connected compartments. ✅
 - Added power-failure/recovery markers in protocol deltas. ✅
+- Added deterministic test coverage for brownout shedding + recovery ordering. ✅
 
-**Exit criteria:** deficits consistently disable lower tiers first and recover deterministically.
+**Exit criteria:** deficits consistently disable lower tiers first and recover deterministically. ✅ Met.
 
 ## Phase 4 — NPC Core + Permanent Death (Days 11–15) ✅ Completed
 

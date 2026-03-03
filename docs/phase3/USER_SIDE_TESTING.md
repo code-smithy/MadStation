@@ -1,6 +1,6 @@
 # Phase 3 User-Side Testing Guide
 
-Use this checklist to validate Phase 3A + current Phase 3B power behavior from an operator perspective.
+Use this checklist to validate completed Phase 3 power behavior from an operator perspective.
 
 ## Prerequisites
 
@@ -97,3 +97,11 @@ Expected:
 - Consumer in the non-powered room remains in `unpowered_consumers`.
 - `world.power_state.networks` shows separate `network_id` entries with independent generation/demand.
 - No cross-network battery discharge/charge effects.
+
+
+## 8) Deterministic recovery ordering check
+
+1. Create a deficit setup with one life-support consumer and two lower-priority consumers.
+2. Confirm lower-priority consumers are shed first (`unpowered_consumers` + `disabled_priorities`).
+3. Add generation back (e.g., reactor) and confirm all consumers recover and `disabled_priorities` becomes empty.
+4. Repeat the same command sequence and compare resulting `powered_consumers`/`unpowered_consumers` order; results should match.

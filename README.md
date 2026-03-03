@@ -144,7 +144,7 @@ See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.
 
 ## Phase 3 progress
 
-Phase 3A is implemented and Phase 3B is in progress: topology-aware power-network segmentation, global observability rollups, load-shedding, oxygen-generator power gating, and `power_event` markers in `delta_tick.entity_changes` are live. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.
+Phase 3 is complete for current roadmap scope: topology-aware power-network segmentation, global observability rollups, deterministic priority load-shedding and recovery, oxygen-generator power gating, and `power_event` markers in `delta_tick.entity_changes` are live. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.
 
 
 ## Phase 3 manual testing

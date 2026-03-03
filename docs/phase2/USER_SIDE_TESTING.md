@@ -69,7 +69,7 @@ Open 2+ websocket clients and compare incoming `delta_tick` payloads for:
 Send two commands rapidly from the same websocket session.
 Expected second ack: `THROTTLED`.
 
-## Known current scope (Phase 2A + partial 2B)
+## Known current scope (Phase 2 complete)
 
 - Compartments and oxygen leak are implemented.
 - Door auto-open/close, door diffusion, and oxygen generation hooks are implemented.
