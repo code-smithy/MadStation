@@ -72,3 +72,9 @@ Watch `delta_tick` payloads for:
 - On death, verify `death_log_appends` includes extended fields (oxygen at death, compartment, personality, needs snapshot).
 - Verify `entity_changes` includes `body_created` after death.
 - After `DisposeBody` completion, verify `entity_changes` includes `body_disposed` and corresponding body record is marked disposed.
+
+
+## 8) Task-aware assignment/path checks
+
+- Create multiple queued `DisposeBody` orders at different distances and verify nearest reachable order is assigned first.
+- Block path to an assigned order and verify `work_order_unassigned` emits with `reason=path_unreachable` and order returns to `Queued`.

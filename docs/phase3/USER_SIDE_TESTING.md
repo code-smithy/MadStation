@@ -31,17 +31,17 @@ Send commands (wait >10s between commands for throttle, or use a new websocket):
 
 ### Build oxygen generator consumer
 ```json
-{"client_command_id":"p1","type":"Build","payload":{"x":12,"y":12,"tile_type":"Floor","machine":{"type":"OxygenGenerator","rate_per_tick":3,"consume_kw":2}}}
+{"client_command_id":"p1","type":"Build","payload":{"x":20,"y":20,"tile_type":"Floor","machine":{"type":"OxygenGenerator","rate_per_tick":3,"consume_kw":2}}}
 ```
 
 ### Build low-priority light consumer
 ```json
-{"client_command_id":"p2","type":"Build","payload":{"x":13,"y":12,"tile_type":"Floor","machine":{"type":"Light","consume_kw":1}}}
+{"client_command_id":"p2","type":"Build","payload":{"x":21,"y":20,"tile_type":"Floor","machine":{"type":"Light","consume_kw":1}}}
 ```
 
 ### Build insufficient generation source (for shedding test)
 ```json
-{"client_command_id":"p3","type":"Build","payload":{"x":5,"y":5,"tile_type":"Floor","machine":{"type":"SolarPanel","generation_kw":2}}}
+{"client_command_id":"p3","type":"Build","payload":{"x":22,"y":20,"tile_type":"Floor","machine":{"type":"SolarPanel","generation_kw":2}}}
 ```
 
 ## 3) Validate load shedding
@@ -59,13 +59,13 @@ Expected for the setup above: oxygen generator remains powered while light is sh
 Add battery:
 
 ```json
-{"client_command_id":"p4","type":"Build","payload":{"x":6,"y":5,"tile_type":"Floor","machine":{"type":"Battery","capacity":20,"stored":10,"discharge_kw":4,"charge_kw":2}}}
+{"client_command_id":"p4","type":"Build","payload":{"x":23,"y":20,"tile_type":"Floor","machine":{"type":"Battery","capacity":20,"stored":10,"discharge_kw":4,"charge_kw":2}}}
 ```
 
 Refresh `/world`:
 
 - `power_state.battery_discharge` should become > 0 when deficit exists.
-- `world.machines["6,5"].stored` should decrease while discharging.
+- `world.machines["23,20"].stored` should decrease while discharging.
 
 ## 5) Validate oxygen generator power gating
 
@@ -73,7 +73,7 @@ Refresh `/world`:
 - Add reactor generation:
 
 ```json
-{"client_command_id":"p5","type":"Build","payload":{"x":7,"y":5,"tile_type":"Floor","machine":{"type":"Reactor","generation_kw":10}}}
+{"client_command_id":"p5","type":"Build","payload":{"x":24,"y":20,"tile_type":"Floor","machine":{"type":"Reactor","generation_kw":10}}}
 ```
 
 - Refresh `/world` over a few ticks:

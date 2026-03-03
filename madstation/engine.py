@@ -23,6 +23,11 @@ ALL_TILE_TYPES = {TILE_VACUUM, TILE_FLOOR, TILE_WALL, TILE_DOOR, TILE_AIRLOCK, T
 WALKABLE_TILES = {TILE_FLOOR, TILE_DOOR, TILE_AIRLOCK}
 COMPARTMENT_FILL_TILES = {TILE_FLOOR, TILE_AIRLOCK}
 
+DEFAULT_STATION_MIN_X = 14
+DEFAULT_STATION_MAX_X = 35
+DEFAULT_STATION_MIN_Y = 14
+DEFAULT_STATION_MAX_Y = 35
+
 MACHINE_OXYGEN_GENERATOR = "OxygenGenerator"
 MACHINE_SOLAR_PANEL = "SolarPanel"
 MACHINE_REACTOR = "Reactor"
@@ -50,6 +55,7 @@ class SimulationEngine:
         width, height = 50, 50
         self.tick: int = 0
         self.server_sequence_id: int = 0
+        grid = self._build_default_grid(width, height)
         self.world_state: dict = {
             "world": {"width": width, "height": height},
             "power": {"mode": "topology_aware_networks"},
@@ -68,7 +74,7 @@ class SimulationEngine:
             "work_orders": [],
             "death_log": [],
             "bodies": [],
-            "grid": [[TILE_FLOOR for _ in range(width)] for _ in range(height)],
+            "grid": grid,
             "door_states": {},
             "machines": {},
             "compartments": [],
@@ -81,6 +87,19 @@ class SimulationEngine:
         self._running = False
         self._recompute_compartments()
         self._initialize_npcs()
+
+
+    @staticmethod
+    def _build_default_grid(width: int, height: int) -> list[list[str]]:
+        grid = [[TILE_VACUUM for _ in range(width)] for _ in range(height)]
+        for y in range(DEFAULT_STATION_MIN_Y, DEFAULT_STATION_MAX_Y + 1):
+            for x in range(DEFAULT_STATION_MIN_X, DEFAULT_STATION_MAX_X + 1):
+                is_border = (
+                    x in {DEFAULT_STATION_MIN_X, DEFAULT_STATION_MAX_X}
+                    or y in {DEFAULT_STATION_MIN_Y, DEFAULT_STATION_MAX_Y}
+                )
+                grid[y][x] = TILE_WALL if is_border else TILE_FLOOR
+        return grid
 
     def next_session_id(self) -> str:
         return f"anon-{uuid4().hex}"
@@ -704,8 +723,8 @@ class SimulationEngine:
         roster: list[dict] = []
         for i, name in enumerate(names):
             speed = min(max_speed, max(min_speed, default_speed + ((i % 3) - 1)))
-            x = 2 + (i % 5)
-            y = 2 + (i // 5)
+            x = 18 + (i % 5)
+            y = 18 + (i // 5)
             roster.append(
                 {
                     "id": f"npc-{i + 1}",
@@ -772,6 +791,21 @@ class SimulationEngine:
                     ty = location.get("y")
                     if isinstance(tx, int) and isinstance(ty, int):
                         next_pos = self._step_toward_target(int(npc["x"]), int(npc["y"]), tx, ty, grid, width, height)
+                        if next_pos is None and (int(npc["x"]), int(npc["y"])) != (tx, ty):
+                            # Dynamic topology may invalidate the assignment path; deterministically re-queue.
+                            active_order["status"] = "Queued"
+                            active_order.pop("assignee_npc_id", None)
+                            active_order.pop("assigned_tick", None)
+                            npc["current_work_order_id"] = None
+                            work_order_changes.append(
+                                {
+                                    "type": "work_order_unassigned",
+                                    "work_order_id": active_order["id"],
+                                    "reason": "path_unreachable",
+                                }
+                            )
+                            active_order = None
+                            next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
                     else:
                         next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
                 else:
@@ -952,26 +986,71 @@ class SimulationEngine:
         npc_id = npc.get("id")
         if not isinstance(npc_id, str):
             return None
-        candidates: list[dict] = []
+
+        grid = self.world_state["grid"]
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        sx, sy = int(npc.get("x", 0)), int(npc.get("y", 0))
+
+        ranked: list[tuple[int, int, str, dict]] = []
         for order in self.world_state.get("work_orders", []):
             if order.get("status") != "Queued":
                 continue
             if order.get("work_type") != "DisposeBody":
                 continue
-            candidates.append(order)
+            location = order.get("location", {})
+            tx = location.get("x")
+            ty = location.get("y")
+            if not isinstance(tx, int) or not isinstance(ty, int):
+                continue
+            distance = self._path_distance(sx, sy, tx, ty, grid, width, height)
+            if distance is None:
+                continue
+            ranked.append((distance, int(order.get("created_tick", 0)), str(order.get("id", "")), order))
 
-        if not candidates:
+        if not ranked:
             return None
 
-        candidates.sort(key=lambda order: (int(order.get("created_tick", 0)), str(order.get("id", ""))))
-        chosen = candidates[0]
+        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        chosen = ranked[0][3]
         chosen["status"] = "Assigned"
         chosen["assignee_npc_id"] = npc_id
         chosen["assigned_tick"] = self.tick
         chosen.setdefault("progress", 0)
         chosen.setdefault("required_progress", 2)
+        chosen["path_distance_assigned"] = ranked[0][0]
         npc["current_work_order_id"] = chosen["id"]
         return chosen
+
+    def _path_distance(
+        self,
+        sx: int,
+        sy: int,
+        tx: int,
+        ty: int,
+        grid: list[list[str]],
+        width: int,
+        height: int,
+    ) -> int | None:
+        start = (sx, sy)
+        target = (tx, ty)
+        if start == target:
+            return 0
+
+        visited: set[tuple[int, int]] = {start}
+        frontier: deque[tuple[int, int, int]] = deque([(sx, sy, 0)])
+        while frontier:
+            cx, cy, dist = frontier.popleft()
+            for nx, ny in self._neighbors8(cx, cy, width, height):
+                if (nx, ny) in visited:
+                    continue
+                if grid[ny][nx] not in WALKABLE_TILES:
+                    continue
+                if (nx, ny) == target:
+                    return dist + 1
+                visited.add((nx, ny))
+                frontier.append((nx, ny, dist + 1))
+        return None
 
     def _step_toward_target(
         self,

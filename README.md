@@ -48,6 +48,8 @@ make run
 
 Then open `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/status`, and `http://127.0.0.1:8000/world`.
 
+By default, the world now starts as vacuum exterior with an enclosed square station (walls on the perimeter, floors inside); NPCs spawn inside the station interior to provide deterministic compartment/decompression baseline behavior.
+
 ## Connect a client (WebSocket)
 
 `connected_clients` increases when a client opens a WebSocket to `/ws` and stays connected.
@@ -127,12 +129,12 @@ Phase 2 is complete: structural edits, deterministic door auto-state, compartmen
 5. Send a decompression command:
 
 ```json
-{"client_command_id":"u2","type":"Deconstruct","payload":{"x":0,"y":0}}
+{"client_command_id":"u2","type":"Deconstruct","payload":{"x":14,"y":20}}
 ```
 
 6. Build a door between two floor tiles and watch `delta_tick.tile_changes` for `door_state` transitions.
 7. Optionally build a floor with a machine hook using payload `{"machine":{"type":"OxygenGenerator","rate_per_tick":3}}`.
-8. Breach then reseal the same tile (`Deconstruct` then `Build Floor`) and verify oxygen/pressure stabilize after reseal.
+8. Breach then reseal the same station wall tile (`Deconstruct` then `Build Wall`) and verify oxygen/pressure stabilize after reseal.
 9. Refresh `/world` to confirm tile mutations + compartment oxygen drift/diffusion/generation.
 
 See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.
@@ -157,7 +159,7 @@ See `docs/phase3/USER_SIDE_TESTING.md` for the full step-by-step command checkli
 
 ## Phase 4 progress
 
-Phase 4 is continuing with deterministic NPC survival mechanics: persistent 10-NPC roster, bounded speed attributes, diagonal movement with oxygen-aware path search, suffocation death handling, automatic `DisposeBody` work-order creation, deterministic DisposeBody assignment/progress/completion, a baseline needs/personality layer that does not override survival constraints, and body lifecycle metadata/disposal state tracking. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
+Phase 4 core is complete for MVP scope: deterministic NPC roster/movement, survival-first needs/personality behavior, suffocation death handling, `DisposeBody` work-order lifecycle with task-aware nearest-reachable path assignment, and deterministic body metadata/disposal state tracking. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
 
 ## Phase 4 manual testing
 

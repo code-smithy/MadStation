@@ -168,7 +168,7 @@ def test_oxygen_drops_after_vacuum_breach() -> None:
         before = engine.world_state["compartments"][0]["oxygen_percent"]
         await engine.enqueue_command(
             session_id,
-            ClientCommand(client_command_id="breach", type=CommandType.DECONSTRUCT, payload={"x": 0, "y": 0}),
+            ClientCommand(client_command_id="breach", type=CommandType.DECONSTRUCT, payload={"x": 14, "y": 20}),
         )
         await engine._execute_tick()
         after = engine.world_state["compartments"][0]["oxygen_percent"]
@@ -357,7 +357,7 @@ def test_delta_includes_compartment_changes_after_breach() -> None:
 
         await engine.enqueue_command(
             session_id,
-            ClientCommand(client_command_id="breach-comp", type=CommandType.DECONSTRUCT, payload={"x": 0, "y": 0}),
+            ClientCommand(client_command_id="breach-comp", type=CommandType.DECONSTRUCT, payload={"x": 14, "y": 20}),
         )
         await engine._execute_tick()
 
@@ -460,16 +460,16 @@ def test_power_load_shedding_disables_low_priority_consumers() -> None:
     async def run() -> None:
         engine = SimulationEngine()
         engine.world_state["machines"] = {
-            "1,1": {"type": "SolarPanel", "enabled": True, "generation_kw": 2.0},
-            "2,2": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0},
-            "3,3": {"type": "Light", "enabled": True, "consume_kw": 1.0},
+            "20,20": {"type": "SolarPanel", "enabled": True, "generation_kw": 2.0},
+            "21,20": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0},
+            "22,20": {"type": "Light", "enabled": True, "consume_kw": 1.0},
         }
 
         engine._update_power()
         state = engine.world_state["power_state"]
 
-        assert "2,2" in state["powered_consumers"]
-        assert "3,3" in state["unpowered_consumers"]
+        assert "21,20" in state["powered_consumers"]
+        assert "22,20" in state["unpowered_consumers"]
         assert 7 in state["disabled_priorities"]
 
     asyncio.run(run())
@@ -479,7 +479,7 @@ def test_battery_bridges_power_deficit_for_oxygen_generator() -> None:
     async def run() -> None:
         engine = SimulationEngine()
         engine.world_state["machines"] = {
-            "10,10": {
+            "23,20": {
                 "type": "Battery",
                 "enabled": True,
                 "capacity": 20.0,
@@ -487,14 +487,14 @@ def test_battery_bridges_power_deficit_for_oxygen_generator() -> None:
                 "discharge_kw": 4.0,
                 "charge_kw": 2.0,
             },
-            "2,2": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0},
+            "21,20": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0},
         }
         engine._update_power()
         state = engine.world_state["power_state"]
 
-        assert "2,2" in state["powered_consumers"]
+        assert "21,20" in state["powered_consumers"]
         assert state["battery_discharge"] > 0
-        assert engine.world_state["machines"]["10,10"]["stored"] < 10.0
+        assert engine.world_state["machines"]["23,20"]["stored"] < 10.0
 
     asyncio.run(run())
 
@@ -538,7 +538,7 @@ def test_reseal_after_breach_stabilizes_oxygen() -> None:
         # 1) breach
         await engine.enqueue_command(
             session_id,
-            ClientCommand(client_command_id="reseal-breach", type=CommandType.DECONSTRUCT, payload={"x": 0, "y": 0}),
+            ClientCommand(client_command_id="reseal-breach", type=CommandType.DECONSTRUCT, payload={"x": 14, "y": 20}),
         )
         await engine._execute_tick()
 
@@ -547,14 +547,14 @@ def test_reseal_after_breach_stabilizes_oxygen() -> None:
         oxygen_after_second_tick = engine.world_state["compartments"][0]["oxygen_percent"]
         assert oxygen_after_second_tick < oxygen_after_breach
 
-        # 2) reseal with floor
+        # 2) reseal with wall
         engine.last_action_at.pop(session_id, None)
         await engine.enqueue_command(
             session_id,
             ClientCommand(
                 client_command_id="reseal-close",
                 type=CommandType.BUILD,
-                payload={"x": 0, "y": 0, "tile_type": "Floor"},
+                payload={"x": 14, "y": 20, "tile_type": "Wall"},
             ),
         )
         await engine._execute_tick()
@@ -572,7 +572,7 @@ def test_reseal_after_breach_stabilizes_oxygen() -> None:
         # delta should include the reseal tile change
         deltas = [m for m in ws.messages if m.get("type") == "delta_tick"]
         assert any(
-            any(change.get("x") == 0 and change.get("y") == 0 and change.get("after") == "Floor" for change in d["tile_changes"])
+            any(change.get("x") == 14 and change.get("y") == 20 and change.get("after") == "Wall" for change in d["tile_changes"])
             for d in deltas
         )
 
@@ -616,7 +616,7 @@ def test_power_events_emitted_for_brownout_and_recovery() -> None:
 
         # force brownout: one consumer, no generation
         engine.world_state["machines"] = {
-            "2,2": {"type": "Light", "enabled": True, "consume_kw": 1.0}
+            "21,20": {"type": "Light", "enabled": True, "consume_kw": 1.0}
         }
         await engine._execute_tick()
         first_delta = [m for m in ws.messages if m.get("type") == "delta_tick"][-1]
@@ -624,7 +624,7 @@ def test_power_events_emitted_for_brownout_and_recovery() -> None:
         assert any(e.get("event") in {"brownout_started", "blackout_started"} for e in first_events)
 
         # recover power with solar
-        engine.world_state["machines"]["0,0"] = {"type": "SolarPanel", "enabled": True, "generation_kw": 5.0}
+        engine.world_state["machines"]["20,20"] = {"type": "SolarPanel", "enabled": True, "generation_kw": 5.0}
         await engine._execute_tick()
         second_delta = [m for m in ws.messages if m.get("type") == "delta_tick"][-1]
         second_events = [e for e in second_delta.get("entity_changes", []) if e.get("type") == "power_event"]
@@ -1111,3 +1111,106 @@ def test_runtime_status_reports_active_body_count() -> None:
     ]
     status = engine.runtime_status()
     assert status["active_body_count"] == 2
+
+
+def test_task_aware_assignment_prefers_nearest_reachable_dispose_order() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-assign",
+            "name": "Assign",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {"id": "wo-far", "work_type": "DisposeBody", "status": "Queued", "location": {"x": 15, "y": 5}, "created_tick": 1, "progress": 0, "required_progress": 2},
+        {"id": "wo-near", "work_type": "DisposeBody", "status": "Queued", "location": {"x": 7, "y": 5}, "created_tick": 2, "progress": 0, "required_progress": 2},
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(5, 16):
+        engine.world_state["grid"][5][x] = "Floor"
+    engine._recompute_compartments()
+
+    engine.tick = 30
+    _, work_changes, _ = engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert npc["current_work_order_id"] == "wo-near"
+    assert any(c.get("type") == "work_order_assigned" and c.get("work_order_id") == "wo-near" for c in work_changes)
+
+
+def test_assigned_order_requeues_when_target_becomes_unreachable() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-path",
+            "name": "Path",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-blocked",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-blocked",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 7, "y": 5},
+            "body_id": "body-b",
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-path",
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][7] = "Floor"
+    # no connecting walkable tile between (5,5) and (7,5) => unreachable
+    engine._recompute_compartments()
+
+    _, work_changes, _ = engine._update_npcs()
+    order = engine.world_state["work_orders"][0]
+    npc = engine.world_state["npcs"][0]
+    assert order["status"] == "Queued"
+    assert npc.get("current_work_order_id") is None
+    assert any(c.get("type") == "work_order_unassigned" and c.get("reason") == "path_unreachable" for c in work_changes)
+
+
+def test_default_world_has_enclosed_station_and_vacuum_exterior() -> None:
+    engine = SimulationEngine()
+    grid = engine.world_state["grid"]
+
+    assert grid[0][0] == "Vacuum"
+    assert grid[14][14] == "Wall"
+    assert grid[20][20] == "Floor"
+    assert grid[35][35] == "Wall"
+
+
+def test_default_npc_spawns_are_inside_station_walkable_tiles() -> None:
+    engine = SimulationEngine()
+    grid = engine.world_state["grid"]
+    for npc in engine.world_state.get("npcs", []):
+        x, y = int(npc["x"]), int(npc["y"])
+        assert grid[y][x] in {"Floor", "Door", "Airlock"}
+        assert 14 < x < 35
+        assert 14 < y < 35

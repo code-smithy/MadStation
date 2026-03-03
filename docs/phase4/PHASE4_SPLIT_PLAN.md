@@ -17,9 +17,9 @@ Phase 4 is started with a deterministic NPC survival core before broader behavio
   - `delta_tick.work_order_changes`,
   - `delta_tick.death_log_appends`.
 
-## Phase 4B (next)
+## Phase 4B (completed in this iteration)
 
-- Upgrade oxygen-aware path search to full task-aware pathfinding across dynamic topology.
+- Upgraded to task-aware pathfinding behavior for `DisposeBody` assignment and execution with deterministic nearest-reachable selection and re-queue on path invalidation. ✅
 - Expanded baseline needs/personality model while preserving survival-first constraints. ✅
 - Added richer death metadata and body lifecycle progression (`body_created`/`body_disposed`, disposal linkage on completed `DisposeBody`). ✅
 
