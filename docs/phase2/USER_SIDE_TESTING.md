@@ -1,11 +1,13 @@
 # Phase 2 User-Side Testing Guide
 
-Use this checklist to validate Phase 1 + Phase 2A behavior from a player/operator perspective.
+Use this checklist to validate Phase 2 behavior from a player/operator perspective.
 
 ## Prerequisites
 
 - Server running locally (`make run`).
 - A websocket client (`wscat`) or browser console.
+
+Default map assumption: vacuum exterior with enclosed square station. Use a station wall tile for breach/reseal checks.
 
 ## 1) Basic runtime checks
 
@@ -48,7 +50,7 @@ Expected:
 Send a deconstruct command on edge tile:
 
 ```json
-{"client_command_id":"breach-a","type":"Deconstruct","payload":{"x":0,"y":0}}
+{"client_command_id":"breach-a","type":"Deconstruct","payload":{"x":14,"y":20}}
 ```
 
 Expected:
@@ -98,18 +100,18 @@ Then verify in `/world`:
 
 This matches your exact expectation: if you breach with vacuum and later close it again, pressure/oxygen should stop falling and stabilize (unless other active leaks exist).
 
-1. Breach an edge tile:
+1. Breach a station wall tile:
 
 ```json
-{"client_command_id":"seal-1","type":"Deconstruct","payload":{"x":0,"y":0}}
+{"client_command_id":"seal-1","type":"Deconstruct","payload":{"x":14,"y":20}}
 ```
 
 2. Wait ~2-3 ticks and confirm oxygen/pressure is dropping in `/world.world.compartments`.
 
-3. Reseal the same tile:
+3. Reseal the same tile as a wall:
 
 ```json
-{"client_command_id":"seal-2","type":"Build","payload":{"x":0,"y":0,"tile_type":"Floor"}}
+{"client_command_id":"seal-2","type":"Build","payload":{"x":14,"y":20,"tile_type":"Wall"}}
 ```
 
 4. Wait ~2-3 ticks and re-check `/world.world.compartments`:

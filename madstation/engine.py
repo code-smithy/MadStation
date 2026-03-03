@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import hashlib
 import json
 import time
@@ -22,6 +23,11 @@ ALL_TILE_TYPES = {TILE_VACUUM, TILE_FLOOR, TILE_WALL, TILE_DOOR, TILE_AIRLOCK, T
 WALKABLE_TILES = {TILE_FLOOR, TILE_DOOR, TILE_AIRLOCK}
 COMPARTMENT_FILL_TILES = {TILE_FLOOR, TILE_AIRLOCK}
 
+DEFAULT_STATION_MIN_X = 14
+DEFAULT_STATION_MAX_X = 35
+DEFAULT_STATION_MIN_Y = 14
+DEFAULT_STATION_MAX_Y = 35
+
 MACHINE_OXYGEN_GENERATOR = "OxygenGenerator"
 MACHINE_SOLAR_PANEL = "SolarPanel"
 MACHINE_REACTOR = "Reactor"
@@ -29,11 +35,7 @@ MACHINE_BATTERY = "Battery"
 MACHINE_HEATER = "Heater"
 MACHINE_LIGHT = "Light"
 
-POWER_PRIORITY = {
-    MACHINE_OXYGEN_GENERATOR: 1,
-    MACHINE_HEATER: 3,
-    MACHINE_LIGHT: 7,
-}
+POWER_PRIORITY = dict(SETTINGS.power_priority_tiers)
 
 
 @dataclass
@@ -53,9 +55,10 @@ class SimulationEngine:
         width, height = 50, 50
         self.tick: int = 0
         self.server_sequence_id: int = 0
+        grid = self._build_default_grid(width, height)
         self.world_state: dict = {
             "world": {"width": width, "height": height},
-            "power": {"mode": "global_network"},
+            "power": {"mode": "topology_aware_networks"},
             "power_state": {
                 "generation": 0.0,
                 "demand": 0.0,
@@ -64,9 +67,22 @@ class SimulationEngine:
                 "powered_consumers": [],
                 "unpowered_consumers": [],
                 "disabled_priorities": [],
+                "networks": [],
             },
             "population": 0,
-            "grid": [[TILE_FLOOR for _ in range(width)] for _ in range(height)],
+            "npcs": [],
+            "work_orders": [],
+            "death_log": [],
+            "bodies": [],
+            "items": [],
+            "storages": [
+                {
+                    "id": "storage-main",
+                    "location": {"x": 19, "y": 19},
+                    "inventory": [],
+                }
+            ],
+            "grid": grid,
             "door_states": {},
             "machines": {},
             "compartments": [],
@@ -78,6 +94,20 @@ class SimulationEngine:
         self.command_ack_cache: dict[str, dict[str, CommandAck]] = {}
         self._running = False
         self._recompute_compartments()
+        self._initialize_npcs()
+
+
+    @staticmethod
+    def _build_default_grid(width: int, height: int) -> list[list[str]]:
+        grid = [[TILE_VACUUM for _ in range(width)] for _ in range(height)]
+        for y in range(DEFAULT_STATION_MIN_Y, DEFAULT_STATION_MAX_Y + 1):
+            for x in range(DEFAULT_STATION_MIN_X, DEFAULT_STATION_MAX_X + 1):
+                is_border = (
+                    x in {DEFAULT_STATION_MIN_X, DEFAULT_STATION_MAX_X}
+                    or y in {DEFAULT_STATION_MIN_Y, DEFAULT_STATION_MAX_Y}
+                )
+                grid[y][x] = TILE_WALL if is_border else TILE_FLOOR
+        return grid
 
     def next_session_id(self) -> str:
         return f"anon-{uuid4().hex}"
@@ -132,6 +162,11 @@ class SimulationEngine:
             "machine_count": len(self.world_state["machines"]),
             "powered_consumer_count": len(self.world_state["power_state"].get("powered_consumers", [])),
             "unpowered_consumer_count": len(self.world_state["power_state"].get("unpowered_consumers", [])),
+            "alive_npc_count": sum(1 for npc in self.world_state.get("npcs", []) if npc.get("alive", True)),
+            "work_order_count": len(self.world_state.get("work_orders", [])),
+            "death_log_count": len(self.world_state.get("death_log", [])),
+            "active_body_count": sum(1 for body in self.world_state.get("bodies", []) if not body.get("disposed", False)),
+            "item_count": len(self.world_state.get("items", [])),
         }
 
     def stop(self) -> None:
@@ -158,6 +193,7 @@ class SimulationEngine:
         claimed_targets: set[str] = set()
         applied = 0
         tile_changes: list[dict] = []
+        command_work_order_changes: list[dict] = []
         topology_changed = False
 
         for pending in drained:
@@ -181,6 +217,9 @@ class SimulationEngine:
                 if tile_change is not None:
                     tile_changes.append(tile_change)
                 topology_changed = topology_changed or did_change
+            elif pending.command.type is CommandType.CREATE_WORK_ORDER:
+                created_order = self._apply_create_work_order(pending.command, self.server_sequence_id)
+                command_work_order_changes.append({"type": "work_order_created_by_command", "work_order": created_order})
 
             ack = CommandAck(
                 client_command_id=pending.command.client_command_id,
@@ -203,6 +242,7 @@ class SimulationEngine:
 
         self._update_power()
         self._update_oxygen()
+        npc_changes, work_order_changes, death_log_appends = self._update_npcs()
 
         after_compartments = self._compartment_snapshot_map()
         after_power = self._power_snapshot()
@@ -214,7 +254,9 @@ class SimulationEngine:
             world_hash=self._world_hash(),
             command_count=applied,
             tile_changes=tile_changes,
-            entity_changes=compartment_changes + power_events,
+            entity_changes=compartment_changes + power_events + npc_changes,
+            work_order_changes=command_work_order_changes + work_order_changes,
+            death_log_appends=death_log_appends,
         )
         await self._broadcast(delta.model_dump())
 
@@ -342,6 +384,31 @@ class SimulationEngine:
         if changed_tile:
             return {"x": x, "y": y, "before": before, "after": after}, True
         return {"x": x, "y": y, "type": "machine_change", "machine_key": key}, True
+
+    def _apply_create_work_order(self, command: ClientCommand, sequence_id: int) -> dict:
+        payload = command.payload
+        location = payload.get("location", {})
+        order = {
+            "id": f"wo-cmd-{sequence_id}",
+            "work_type": str(payload.get("work_type")),
+            "status": "Queued",
+            "location": {"x": int(location["x"]), "y": int(location["y"])},
+            "created_tick": self.tick,
+            "progress": 0,
+            "required_progress": 2,
+        }
+        metadata = payload.get("metadata")
+        if isinstance(metadata, dict):
+            # narrow accepted deterministic metadata fields only
+            if isinstance(metadata.get("item_type"), str):
+                order["item_type"] = metadata["item_type"]
+            destination = metadata.get("destination")
+            if isinstance(destination, dict) and self._validate_xy(destination.get("x"), destination.get("y")):
+                order["destination"] = {"x": int(destination["x"]), "y": int(destination["y"])}
+            if isinstance(metadata.get("item_id"), str):
+                order["item_id"] = metadata["item_id"]
+        self.world_state.setdefault("work_orders", []).append(order)
+        return order
 
     def _normalize_machine(self, machine: dict) -> dict:
         machine_type = machine.get("type")
@@ -488,12 +555,57 @@ class SimulationEngine:
 
     def _update_power(self) -> None:
         machines = self.world_state["machines"]
+        machines_by_network: dict[str, list[str]] = {}
+        for key in sorted(machines.keys()):
+            network_id = self._power_network_id(key)
+            machines_by_network.setdefault(network_id, []).append(key)
+
+        generation = 0.0
+        demand = 0.0
+        battery_discharge = 0.0
+        battery_charge = 0.0
+        powered_consumers: list[str] = []
+        unpowered_consumers: list[str] = []
+        disabled_priorities: set[int] = set()
+        network_states: list[dict] = []
+
+        for network_id in sorted(machines_by_network.keys()):
+            network_machine_keys = machines_by_network[network_id]
+            result = self._update_power_for_network(network_id, network_machine_keys)
+            generation += result["generation"]
+            demand += result["demand"]
+            battery_discharge += result["battery_discharge"]
+            battery_charge += result["battery_charge"]
+            powered_consumers.extend(result["powered_consumers"])
+            unpowered_consumers.extend(result["unpowered_consumers"])
+            disabled_priorities.update(result["disabled_priorities"])
+            network_states.append(result)
+
+        self.world_state["power_state"] = {
+            "generation": round(generation, 3),
+            "demand": round(demand, 3),
+            "battery_discharge": round(battery_discharge, 3),
+            "battery_charge": round(battery_charge, 3),
+            "powered_consumers": sorted(powered_consumers),
+            "unpowered_consumers": sorted(unpowered_consumers),
+            "disabled_priorities": sorted(disabled_priorities),
+            "networks": network_states,
+        }
+
+    def _power_network_id(self, machine_key: str) -> str:
+        comp_id = self.world_state.get("compartment_index", {}).get(machine_key)
+        if comp_id is not None:
+            return f"compartment:{int(comp_id)}"
+        return f"isolated:{machine_key}"
+
+    def _update_power_for_network(self, network_id: str, machine_keys: list[str]) -> dict:
+        machines = self.world_state["machines"]
         generation = 0.0
         demand = 0.0
         consumers: list[tuple[str, int, float]] = []
         battery_keys: list[str] = []
 
-        for key in sorted(machines.keys()):
+        for key in machine_keys:
             machine = machines[key]
             if not isinstance(machine, dict) or not machine.get("enabled", True):
                 continue
@@ -534,7 +646,6 @@ class SimulationEngine:
                 unpowered_consumers.append(key)
                 disabled_priorities.add(priority)
 
-        # charge batteries with surplus after serving powered consumers
         battery_charge = 0.0
         for key in battery_keys:
             if total_available <= 0:
@@ -551,13 +662,14 @@ class SimulationEngine:
             battery_charge += gain
             total_available -= gain
 
-        self.world_state["power_state"] = {
+        return {
+            "network_id": network_id,
             "generation": round(generation, 3),
             "demand": round(demand, 3),
             "battery_discharge": round(battery_discharge, 3),
             "battery_charge": round(battery_charge, 3),
-            "powered_consumers": powered_consumers,
-            "unpowered_consumers": unpowered_consumers,
+            "powered_consumers": sorted(powered_consumers),
+            "unpowered_consumers": sorted(unpowered_consumers),
             "disabled_priorities": sorted(disabled_priorities),
         }
 
@@ -630,6 +742,576 @@ class SimulationEngine:
             compartment["oxygen_percent"] = round(next_oxygen, 2)
             compartment["pressure"] = round(next_oxygen / 100, 3)
 
+    def _initialize_npcs(self) -> None:
+        names = [
+            "Ari",
+            "Beck",
+            "Cyra",
+            "Dax",
+            "Esme",
+            "Finn",
+            "Gala",
+            "Hale",
+            "Ivo",
+            "Juno",
+        ]
+        default_speed = SETTINGS.npc_speed_default_tiles_per_sec
+        min_speed = SETTINGS.npc_speed_min_tiles_per_sec
+        max_speed = SETTINGS.npc_speed_max_tiles_per_sec
+        roster: list[dict] = []
+        for i, name in enumerate(names):
+            speed = min(max_speed, max(min_speed, default_speed + ((i % 3) - 1)))
+            x = 18 + (i % 5)
+            y = 18 + (i // 5)
+            roster.append(
+                {
+                    "id": f"npc-{i + 1}",
+                    "name": name,
+                    "x": x,
+                    "y": y,
+                    "speed": speed,
+                    "move_accumulator": 0.0,
+                    "health": 100.0,
+                    "alive": True,
+                    "personality": ["baseline", "diligent", "cautious"][i % 3],
+                    "current_work_order_id": None,
+                    "needs": {
+                        "hunger": 0.0,
+                        "fatigue": 0.0,
+                    },
+                }
+            )
+        self.world_state["npcs"] = roster
+        self.world_state["population"] = len(roster)
+
+    def _update_npcs(self) -> tuple[list[dict], list[dict], list[dict]]:
+        npc_changes: list[dict] = []
+        work_order_changes: list[dict] = []
+        death_log_appends: list[dict] = []
+        grid = self.world_state["grid"]
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        index = self.world_state.get("compartment_index", {})
+        compartments = {int(c["id"]): c for c in self.world_state.get("compartments", [])}
+
+        for npc in self.world_state.get("npcs", []):
+            if not npc.get("alive", True):
+                continue
+
+            active_order = self._npc_active_work_order(npc)
+            if active_order is None:
+                assigned = self._assign_next_work_order(npc)
+                if assigned is not None:
+                    active_order = assigned
+                    work_order_changes.append(
+                        {
+                            "type": "work_order_assigned",
+                            "work_order_id": assigned["id"],
+                            "assignee_npc_id": npc["id"],
+                            "status": assigned["status"],
+                        }
+                    )
+
+            before_x, before_y = int(npc["x"]), int(npc["y"])
+            move_budget = float(npc.get("move_accumulator", 0.0)) + float(npc.get("speed", SETTINGS.npc_speed_default_tiles_per_sec))
+            steps = int(move_budget)
+            npc["move_accumulator"] = round(move_budget - steps, 3)
+
+            for _ in range(steps):
+                next_pos: tuple[int, int] | None
+                oxygen_here = self._oxygen_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
+                # Survival constraints always dominate personality/task behavior.
+                if oxygen_here <= SETTINGS.oxygen_safe_min_percent:
+                    next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
+                elif active_order is not None:
+                    target = self._work_order_target(active_order, npc)
+                    tx = target[0] if target is not None else None
+                    ty = target[1] if target is not None else None
+                    if isinstance(tx, int) and isinstance(ty, int):
+                        next_pos = self._step_toward_target(int(npc["x"]), int(npc["y"]), tx, ty, grid, width, height)
+                        if next_pos is None and (int(npc["x"]), int(npc["y"])) != (tx, ty):
+                            # Dynamic topology may invalidate the assignment path; deterministically re-queue.
+                            active_order["status"] = "Queued"
+                            active_order.pop("assignee_npc_id", None)
+                            active_order.pop("assigned_tick", None)
+                            npc["current_work_order_id"] = None
+                            work_order_changes.append(
+                                {
+                                    "type": "work_order_unassigned",
+                                    "work_order_id": active_order["id"],
+                                    "reason": "path_unreachable",
+                                }
+                            )
+                            active_order = None
+                            next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
+                    else:
+                        next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
+                else:
+                    next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
+                if next_pos is None:
+                    break
+                npc["x"], npc["y"] = next_pos
+
+            oxygen = self._oxygen_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
+            if oxygen <= 0.0:
+                npc["health"] = round(float(npc.get("health", 100.0)) - SETTINGS.suffocation_damage_per_tick_at_zero_o2, 2)
+
+            needs = npc.setdefault("needs", {"hunger": 0.0, "fatigue": 0.0})
+            # Deterministic baseline need drift.
+            needs["hunger"] = round(min(100.0, float(needs.get("hunger", 0.0)) + 0.2), 2)
+            needs["fatigue"] = round(min(100.0, float(needs.get("fatigue", 0.0)) + 0.15), 2)
+            if needs["hunger"] >= 75.0 or needs["fatigue"] >= 75.0:
+                npc_changes.append(
+                    {
+                        "type": "npc_need_state",
+                        "npc_id": npc["id"],
+                        "hunger": needs["hunger"],
+                        "fatigue": needs["fatigue"],
+                    }
+                )
+
+            if int(npc["x"]) != before_x or int(npc["y"]) != before_y:
+                npc_changes.append(
+                    {
+                        "type": "npc_move",
+                        "npc_id": npc["id"],
+                        "from": {"x": before_x, "y": before_y},
+                        "to": {"x": int(npc["x"]), "y": int(npc["y"])},
+                    }
+                )
+
+            if oxygen <= SETTINGS.oxygen_safe_min_percent:
+                npc_changes.append(
+                    {
+                        "type": "npc_survival_state",
+                        "npc_id": npc["id"],
+                        "oxygen_percent": round(oxygen, 2),
+                        "health": round(float(npc.get("health", 100.0)), 2),
+                    }
+                )
+
+            if float(npc.get("health", 0.0)) <= 0.0:
+                npc["alive"] = False
+                npc["health"] = 0.0
+                comp_id = index.get(self._xy_key(int(npc["x"]), int(npc["y"])))
+                death_entry = {
+                    "npc_id": npc["id"],
+                    "name": npc.get("name", npc["id"]),
+                    "tick": self.tick,
+                    "cause": "suffocation",
+                    "x": int(npc["x"]),
+                    "y": int(npc["y"]),
+                    "oxygen_percent_at_death": round(oxygen, 2),
+                    "compartment_id": int(comp_id) if comp_id is not None else None,
+                    "personality": str(npc.get("personality", "baseline")),
+                    "hunger": round(float(npc.get("needs", {}).get("hunger", 0.0)), 2),
+                    "fatigue": round(float(npc.get("needs", {}).get("fatigue", 0.0)), 2),
+                }
+                self.world_state.setdefault("death_log", []).append(death_entry)
+                death_log_appends.append(death_entry)
+                npc_changes.append({"type": "npc_death", **death_entry})
+
+                body = {
+                    "id": f"body-{npc['id']}-{self.tick}",
+                    "npc_id": npc["id"],
+                    "name": npc.get("name", npc["id"]),
+                    "location": {"x": int(npc["x"]), "y": int(npc["y"])},
+                    "created_tick": self.tick,
+                    "disposed": False,
+                    "disposed_tick": None,
+                    "disposed_by_npc_id": None,
+                }
+                self.world_state.setdefault("bodies", []).append(body)
+                npc_changes.append({"type": "body_created", "body_id": body["id"], "location": body["location"], "npc_id": npc["id"]})
+
+                if active_order is not None and active_order.get("status") == "Assigned":
+                    active_order["status"] = "Queued"
+                    active_order.pop("assignee_npc_id", None)
+                    active_order.pop("assigned_tick", None)
+                    npc["current_work_order_id"] = None
+                    work_order_changes.append(
+                        {
+                            "type": "work_order_unassigned",
+                            "work_order_id": active_order["id"],
+                            "reason": "assignee_died",
+                        }
+                    )
+
+                work_order = {
+                    "id": f"wo-dispose-{npc['id']}-{self.tick}",
+                    "work_type": "DisposeBody",
+                    "status": "Queued",
+                    "location": {"x": int(npc["x"]), "y": int(npc["y"])},
+                    "source_npc_id": npc["id"],
+                    "body_id": body["id"],
+                    "created_tick": self.tick,
+                    "progress": 0,
+                    "required_progress": 2,
+                }
+                self.world_state.setdefault("work_orders", []).append(work_order)
+                work_order_changes.append({"type": "work_order_created", "work_order": work_order})
+                continue
+
+            if active_order is not None:
+                if self._npc_at_active_order_target(npc, active_order):
+                    self._process_active_work_order(npc, active_order, oxygen, npc_changes, work_order_changes)
+
+        self.world_state["population"] = sum(1 for npc in self.world_state.get("npcs", []) if npc.get("alive", True))
+        return npc_changes, work_order_changes, death_log_appends
+
+    def _process_active_work_order(
+        self,
+        npc: dict,
+        active_order: dict,
+        oxygen: float,
+        npc_changes: list[dict],
+        work_order_changes: list[dict],
+    ) -> None:
+        progress_gain = 1
+        personality = str(npc.get("personality", "baseline"))
+        if personality == "diligent" and oxygen > SETTINGS.oxygen_safe_min_percent:
+            progress_gain = 2
+
+        work_type = str(active_order.get("work_type", ""))
+        if work_type == "HaulItem":
+            item = self._item_for_haul_order(active_order)
+            if item is not None:
+                holder = item.get("holder_npc_id")
+                if holder is None:
+                    item["holder_npc_id"] = npc["id"]
+                    work_order_changes.append({"type": "item_picked_up", "item_id": item["id"], "npc_id": npc["id"]})
+                elif holder == npc.get("id"):
+                    item["location"] = {"x": int(npc["x"]), "y": int(npc["y"])}
+
+        active_order["progress"] = int(active_order.get("progress", 0)) + progress_gain
+        work_order_changes.append(
+            {
+                "type": "work_order_progress",
+                "work_order_id": active_order["id"],
+                "progress": int(active_order["progress"]),
+                "required_progress": int(active_order.get("required_progress", 2)),
+                "assignee_npc_id": npc["id"],
+            }
+        )
+        if int(active_order["progress"]) < int(active_order.get("required_progress", 2)):
+            return
+
+        active_order["status"] = "Completed"
+        active_order["completed_tick"] = self.tick
+        active_order["completed_by_npc_id"] = npc["id"]
+        npc["current_work_order_id"] = None
+
+        work_type = str(active_order.get("work_type", ""))
+        disposed_body_id = active_order.get("body_id")
+        if work_type == "DisposeBody" and isinstance(disposed_body_id, str):
+            for body in self.world_state.get("bodies", []):
+                if body.get("id") != disposed_body_id:
+                    continue
+                if not body.get("disposed", False):
+                    body["disposed"] = True
+                    body["disposed_tick"] = self.tick
+                    body["disposed_by_npc_id"] = npc["id"]
+                    npc_changes.append(
+                        {
+                            "type": "body_disposed",
+                            "body_id": disposed_body_id,
+                            "disposed_by_npc_id": npc["id"],
+                            "tick": self.tick,
+                        }
+                    )
+                break
+        elif work_type == "MineIce":
+            item_id = f"item-ice-{active_order['id']}-{self.tick}"
+            item = {
+                "id": item_id,
+                "item_type": str(active_order.get("item_type", "IceChunk")),
+                "location": {"x": int(npc["x"]), "y": int(npc["y"])},
+                "holder_npc_id": None,
+                "created_tick": self.tick,
+            }
+            self.world_state.setdefault("items", []).append(item)
+            npc_changes.append({"type": "item_created", "item_id": item_id, "item_type": item["item_type"], "location": item["location"]})
+
+            destination = self._nearest_storage_location(int(npc["x"]), int(npc["y"]))
+            if destination is not None:
+                haul_order = {
+                    "id": f"wo-haul-{item_id}",
+                    "work_type": "HaulItem",
+                    "status": "Queued",
+                    "location": {"x": int(npc["x"]), "y": int(npc["y"])},
+                    "destination": destination,
+                    "item_id": item_id,
+                    "created_tick": self.tick,
+                    "progress": 0,
+                    "required_progress": 2,
+                }
+                self.world_state.setdefault("work_orders", []).append(haul_order)
+                work_order_changes.append({"type": "work_order_created_auto", "work_order": haul_order})
+        elif work_type == "HaulItem":
+            item = self._item_for_haul_order(active_order)
+            destination = active_order.get("destination")
+            if item is not None and isinstance(destination, dict):
+                item["holder_npc_id"] = None
+                item["location"] = {"x": int(destination.get("x", npc["x"])), "y": int(destination.get("y", npc["y"]))}
+                self._store_item_at_location(item)
+                work_order_changes.append({"type": "item_stored", "item_id": item["id"], "location": item["location"]})
+
+        work_order_changes.append(
+            {
+                "type": "work_order_completed",
+                "work_order_id": active_order["id"],
+                "completed_by_npc_id": npc["id"],
+                "disposed_body_id": disposed_body_id,
+            }
+        )
+
+    def _work_order_target(self, order: dict, npc: dict) -> tuple[int, int] | None:
+        work_type = str(order.get("work_type", ""))
+        if work_type != "HaulItem":
+            loc = order.get("location", {})
+            if isinstance(loc.get("x"), int) and isinstance(loc.get("y"), int):
+                return int(loc["x"]), int(loc["y"])
+            return None
+
+        item = self._item_for_haul_order(order)
+        if item is None:
+            return None
+        holder = item.get("holder_npc_id")
+        if holder == npc.get("id"):
+            destination = order.get("destination")
+            if isinstance(destination, dict) and isinstance(destination.get("x"), int) and isinstance(destination.get("y"), int):
+                return int(destination["x"]), int(destination["y"])
+            return None
+        loc = item.get("location", {})
+        if isinstance(loc.get("x"), int) and isinstance(loc.get("y"), int):
+            return int(loc["x"]), int(loc["y"])
+        return None
+
+    def _npc_at_active_order_target(self, npc: dict, order: dict) -> bool:
+        target = self._work_order_target(order, npc)
+        if target is None:
+            return False
+        return int(npc.get("x", -1)) == target[0] and int(npc.get("y", -1)) == target[1]
+
+    def _item_for_haul_order(self, order: dict) -> dict | None:
+        item_id = order.get("item_id")
+        if not isinstance(item_id, str):
+            return None
+        for item in self.world_state.get("items", []):
+            if item.get("id") == item_id:
+                return item
+        return None
+
+    def _npc_active_work_order(self, npc: dict) -> dict | None:
+        work_order_id = npc.get("current_work_order_id")
+        if not isinstance(work_order_id, str) or not work_order_id:
+            return None
+        for order in self.world_state.get("work_orders", []):
+            if order.get("id") != work_order_id:
+                continue
+            if order.get("status") != "Assigned":
+                return None
+            if order.get("assignee_npc_id") != npc.get("id"):
+                return None
+            return order
+        return None
+
+    def _assign_next_work_order(self, npc: dict) -> dict | None:
+        npc_id = npc.get("id")
+        if not isinstance(npc_id, str):
+            return None
+
+        grid = self.world_state["grid"]
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        sx, sy = int(npc.get("x", 0)), int(npc.get("y", 0))
+
+        ranked: list[tuple[int, int, str, dict]] = []
+        for order in self.world_state.get("work_orders", []):
+            if order.get("status") != "Queued":
+                continue
+            if order.get("work_type") not in {"DisposeBody", "MineIce", "HaulItem"}:
+                continue
+            location = order.get("location", {})
+            tx = location.get("x")
+            ty = location.get("y")
+            if not isinstance(tx, int) or not isinstance(ty, int):
+                continue
+            distance = self._path_distance(sx, sy, tx, ty, grid, width, height)
+            if distance is None:
+                continue
+            ranked.append((distance, int(order.get("created_tick", 0)), str(order.get("id", "")), order))
+
+        if not ranked:
+            return None
+
+        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        chosen = ranked[0][3]
+        chosen["status"] = "Assigned"
+        chosen["assignee_npc_id"] = npc_id
+        chosen["assigned_tick"] = self.tick
+        chosen.setdefault("progress", 0)
+        chosen.setdefault("required_progress", 2)
+        chosen["path_distance_assigned"] = ranked[0][0]
+        npc["current_work_order_id"] = chosen["id"]
+        return chosen
+
+    def _path_distance(
+        self,
+        sx: int,
+        sy: int,
+        tx: int,
+        ty: int,
+        grid: list[list[str]],
+        width: int,
+        height: int,
+    ) -> int | None:
+        start = (sx, sy)
+        target = (tx, ty)
+        if start == target:
+            return 0
+
+        visited: set[tuple[int, int]] = {start}
+        frontier: deque[tuple[int, int, int]] = deque([(sx, sy, 0)])
+        while frontier:
+            cx, cy, dist = frontier.popleft()
+            for nx, ny in self._neighbors8(cx, cy, width, height):
+                if (nx, ny) in visited:
+                    continue
+                if grid[ny][nx] not in WALKABLE_TILES:
+                    continue
+                if (nx, ny) == target:
+                    return dist + 1
+                visited.add((nx, ny))
+                frontier.append((nx, ny, dist + 1))
+        return None
+
+    def _step_toward_target(
+        self,
+        x: int,
+        y: int,
+        target_x: int,
+        target_y: int,
+        grid: list[list[str]],
+        width: int,
+        height: int,
+    ) -> tuple[int, int] | None:
+        start = (x, y)
+        target = (target_x, target_y)
+        if start == target:
+            return None
+
+        visited: set[tuple[int, int]] = {start}
+        parents: dict[tuple[int, int], tuple[int, int]] = {}
+        frontier: deque[tuple[int, int]] = deque([start])
+
+        found = False
+        while frontier:
+            cx, cy = frontier.popleft()
+            for nx, ny in self._neighbors8(cx, cy, width, height):
+                if (nx, ny) in visited:
+                    continue
+                if grid[ny][nx] not in WALKABLE_TILES:
+                    continue
+                visited.add((nx, ny))
+                parents[(nx, ny)] = (cx, cy)
+                if (nx, ny) == target:
+                    found = True
+                    frontier.clear()
+                    break
+                frontier.append((nx, ny))
+
+        if not found:
+            return None
+
+        step = target
+        while parents.get(step) != start:
+            parent = parents.get(step)
+            if parent is None:
+                return None
+            step = parent
+        return step
+
+    def _next_npc_position(
+        self,
+        x: int,
+        y: int,
+        grid: list[list[str]],
+        width: int,
+        height: int,
+        index: dict[str, int],
+        compartments: dict[int, dict],
+    ) -> tuple[int, int] | None:
+        current = (x, y)
+        current_oxygen = self._oxygen_at_tile(x, y, index, compartments)
+
+        visited: set[tuple[int, int]] = {current}
+        parents: dict[tuple[int, int], tuple[int, int]] = {}
+        distances: dict[tuple[int, int], int] = {current: 0}
+        frontier: deque[tuple[int, int]] = deque([current])
+
+        best_target = current
+        best_rank = (current_oxygen >= SETTINGS.oxygen_safe_min_percent, current_oxygen, 0, -x, -y)
+
+        while frontier:
+            cx, cy = frontier.popleft()
+            for nx, ny in self._neighbors8(cx, cy, width, height):
+                if (nx, ny) in visited:
+                    continue
+                if grid[ny][nx] not in WALKABLE_TILES:
+                    continue
+
+                visited.add((nx, ny))
+                parents[(nx, ny)] = (cx, cy)
+                distances[(nx, ny)] = distances[(cx, cy)] + 1
+                frontier.append((nx, ny))
+
+                oxygen = self._oxygen_at_tile(nx, ny, index, compartments)
+                rank = (
+                    oxygen >= SETTINGS.oxygen_safe_min_percent,
+                    oxygen,
+                    -distances[(nx, ny)],
+                    -nx,
+                    -ny,
+                )
+                if rank > best_rank:
+                    best_rank = rank
+                    best_target = (nx, ny)
+
+        if best_target == current:
+            return None
+
+        step = best_target
+        while parents.get(step) != current:
+            parent = parents.get(step)
+            if parent is None:
+                return None
+            step = parent
+        return step
+
+    def _oxygen_at_tile(self, x: int, y: int, index: dict[str, int], compartments: dict[int, dict]) -> float:
+        comp_id = index.get(self._xy_key(x, y))
+        if comp_id is not None:
+            compartment = compartments.get(int(comp_id))
+            if compartment is not None:
+                return float(compartment.get("oxygen_percent", 0.0))
+
+        # Door tiles are walkable but not part of compartments; infer local oxygen from adjacent compartments.
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        adjacent_values: list[float] = []
+        for nx, ny in self._neighbors4(x, y, width, height):
+            neighbor_comp = index.get(self._xy_key(nx, ny))
+            if neighbor_comp is None:
+                continue
+            compartment = compartments.get(int(neighbor_comp))
+            if compartment is None:
+                continue
+            adjacent_values.append(float(compartment.get("oxygen_percent", 0.0)))
+        if adjacent_values:
+            return max(adjacent_values)
+        return 0.0
+
     def _compartment_snapshot_map(self) -> dict[int, dict]:
         snapshot: dict[int, dict] = {}
         for compartment in self.world_state["compartments"]:
@@ -667,6 +1349,35 @@ class SimulationEngine:
         for cid in before.keys() - after.keys():
             changes.append({"type": "compartment_change", "compartment_id": cid, "reason": "removed", "previous": before[cid]})
         return changes
+
+    def _nearest_storage_location(self, x: int, y: int) -> dict | None:
+        storages = self.world_state.get("storages", [])
+        ranked: list[tuple[int, str, dict]] = []
+        for storage in storages:
+            loc = storage.get("location", {})
+            sx, sy = loc.get("x"), loc.get("y")
+            if not isinstance(sx, int) or not isinstance(sy, int):
+                continue
+            dist = abs(sx - x) + abs(sy - y)
+            ranked.append((dist, str(storage.get("id", "")), storage))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        loc = ranked[0][2]["location"]
+        return {"x": int(loc["x"]), "y": int(loc["y"])}
+
+    def _store_item_at_location(self, item: dict) -> None:
+        loc = item.get("location", {})
+        ix, iy = loc.get("x"), loc.get("y")
+        if not isinstance(ix, int) or not isinstance(iy, int):
+            return
+        for storage in self.world_state.get("storages", []):
+            s_loc = storage.get("location", {})
+            if s_loc.get("x") == ix and s_loc.get("y") == iy:
+                inventory = storage.setdefault("inventory", [])
+                if item.get("id") not in inventory:
+                    inventory.append(item.get("id"))
+                break
 
     def _power_snapshot(self) -> dict:
         state = self.world_state.get("power_state", {})
@@ -729,6 +1440,15 @@ class SimulationEngine:
             )
 
         return events
+
+    @staticmethod
+    def _neighbors8(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:
+        points: list[tuple[int, int]] = []
+        for dx, dy in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                points.append((nx, ny))
+        return points
 
     @staticmethod
     def _neighbors4(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:
