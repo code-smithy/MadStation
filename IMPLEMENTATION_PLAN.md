@@ -74,7 +74,7 @@
 
 **Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; Phase 2 closure candidate; remaining work is mostly invariants/protocol polish.)
 
-## Phase 3 — Power + Priority Load Shedding (Days 8–10) 🚧 In Progress
+## Phase 3 — Power + Priority Load Shedding (Days 8–10) ✅ Completed
 
 ### Phase 3A (completed in current iteration)
 - Implemented global power model with generation, battery discharge/charge, and tiered allocation.
@@ -83,21 +83,24 @@
 
 ### Phase 3B (in progress)
 - Expand machine classes and tier policy from constants docs.
-- Add topology-aware power graph recalculation (currently global model).
+- Added topology-aware power-network segmentation by connected compartments. ✅
 - Added power-failure/recovery markers in protocol deltas. ✅
 
 **Exit criteria:** deficits consistently disable lower tiers first and recover deterministically.
 
-## Phase 4 — NPC Core + Permanent Death (Days 11–15)
+## Phase 4 — NPC Core + Permanent Death (Days 11–15) 🚧 In Progress
 
-- Add 10 named persistent NPCs.
-- Implement pathfinding with diagonal movement.
-- Add speed attribute per NPC in `[1,4]` (default centered at 2).
-- Needs/damage/death pipeline:
-  - survival checks first,
-  - personality modifiers second,
-  - permanent death records.
-- Spawn `DisposeBody` work order on death.
+### Phase 4A (started in current iteration)
+- Added 10 named persistent NPCs. ✅
+- Added speed attributes bounded to `[1,4]`. ✅
+- Added deterministic diagonal survival movement baseline (full pathfinding still pending). ✅
+- Added suffocation damage/death handling with permanent death records. ✅
+- Added automatic `DisposeBody` work-order creation on death. ✅
+
+### Phase 4B (next)
+- Upgrade baseline movement to full pathfinding across larger topology changes.
+- Expand needs/personality stack while preserving survival-first constraints.
+- Enrich death/body lifecycle state and task integration.
 
 **Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp.
 
@@ -194,3 +197,7 @@ Phase 2 split details are tracked in `docs/phase2/PHASE2_SPLIT_PLAN.md`.
 
 
 Phase 3 split details are tracked in `docs/phase3/PHASE3_SPLIT_PLAN.md`.
+
+
+
+Phase 4 split details are tracked in `docs/phase4/PHASE4_SPLIT_PLAN.md`.
