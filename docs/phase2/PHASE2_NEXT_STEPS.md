@@ -1,4 +1,4 @@
-# Phase 2 Remaining Work (After 2A)
+# Phase 2 Remaining Work (After 2B progress)
 
 ## Completed in this iteration
 

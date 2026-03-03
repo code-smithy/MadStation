@@ -9,6 +9,7 @@
 - `docs/phase0/DELTA_PROTOCOL.md`
 - `docs/phase0/DETERMINISM_TEST_PLAN.md`
 - `docs/phase1/PHASE1_COMPLETION.md`
+- `docs/phase1/PHASE1_REVIEW.md`
 - `docs/phase2/PHASE2_SPLIT_PLAN.md`
 - `docs/phase2/PHASE2_NEXT_STEPS.md`
 - `docs/phase2/USER_SIDE_TESTING.md`

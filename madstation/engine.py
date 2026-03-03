@@ -185,12 +185,22 @@ class SimulationEngine:
             tile_changes.extend(door_changes)
             topology_changed = True
 
+        before_compartments = self._compartment_snapshot_map()
         if topology_changed:
             self._recompute_compartments()
 
         self._update_oxygen()
+        after_compartments = self._compartment_snapshot_map()
+        compartment_changes = self._compartment_changes(before_compartments, after_compartments)
+
         world_hash = self._world_hash()
-        delta = DeltaTick(tick=self.tick, world_hash=world_hash, command_count=applied, tile_changes=tile_changes)
+        delta = DeltaTick(
+            tick=self.tick,
+            world_hash=world_hash,
+            command_count=applied,
+            tile_changes=tile_changes,
+            entity_changes=compartment_changes,
+        )
         await self._broadcast(delta.model_dump())
 
     async def _broadcast(self, payload: dict) -> None:
@@ -437,6 +447,60 @@ class SimulationEngine:
             next_oxygen = max(0.0, min(100.0, next_oxygen))
             compartment["oxygen_percent"] = round(next_oxygen, 2)
             compartment["pressure"] = round(next_oxygen / 100, 3)
+
+    def _compartment_snapshot_map(self) -> dict[int, dict]:
+        snapshot: dict[int, dict] = {}
+        for compartment in self.world_state["compartments"]:
+            cid = int(compartment["id"])
+            snapshot[cid] = {
+                "oxygen_percent": float(compartment.get("oxygen_percent", 0.0)),
+                "pressure": float(compartment.get("pressure", 0.0)),
+                "tile_count": int(compartment.get("tile_count", 0)),
+            }
+        return snapshot
+
+    @staticmethod
+    def _compartment_changes(before: dict[int, dict], after: dict[int, dict]) -> list[dict]:
+        changes: list[dict] = []
+        for cid, current in after.items():
+            previous = before.get(cid)
+            if previous is None:
+                changes.append(
+                    {
+                        "type": "compartment_change",
+                        "compartment_id": cid,
+                        "reason": "created",
+                        "current": current,
+                    }
+                )
+                continue
+
+            if (
+                current["oxygen_percent"] != previous["oxygen_percent"]
+                or current["pressure"] != previous["pressure"]
+                or current["tile_count"] != previous["tile_count"]
+            ):
+                changes.append(
+                    {
+                        "type": "compartment_change",
+                        "compartment_id": cid,
+                        "reason": "updated",
+                        "previous": previous,
+                        "current": current,
+                    }
+                )
+
+        for cid in before.keys() - after.keys():
+            changes.append(
+                {
+                    "type": "compartment_change",
+                    "compartment_id": cid,
+                    "reason": "removed",
+                    "previous": before[cid],
+                }
+            )
+
+        return changes
 
     @staticmethod
     def _neighbors4(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:

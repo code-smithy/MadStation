@@ -347,3 +347,23 @@ def test_door_auto_open_close_generates_tile_changes() -> None:
         assert any(any(change.get("type") == "door_state" for change in d.get("tile_changes", [])) for d in deltas)
 
     asyncio.run(run())
+
+
+def test_delta_includes_compartment_changes_after_breach() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session_id = await engine.connect(ws)
+
+        await engine.enqueue_command(
+            session_id,
+            ClientCommand(client_command_id="breach-comp", type=CommandType.DECONSTRUCT, payload={"x": 0, "y": 0}),
+        )
+        await engine._execute_tick()
+
+        deltas = [m for m in ws.messages if m.get("type") == "delta_tick"]
+        assert deltas
+        entity_changes = deltas[-1].get("entity_changes", [])
+        assert any(change.get("type") == "compartment_change" for change in entity_changes)
+
+    asyncio.run(run())
