@@ -379,6 +379,7 @@ def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
             for x in range(50):
                 engine.world_state["grid"][y][x] = "Wall"
         engine.world_state["grid"][10][10] = "Floor"
+        engine.world_state["grid"][10][11] = "Floor"
         engine._recompute_compartments()
 
         only_compartment = engine.world_state["compartments"][0]
@@ -390,7 +391,7 @@ def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
             "rate_per_tick": 5.0,
             "consume_kw": 2.0,
         }
-        engine.world_state["machines"]["0,0"] = {
+        engine.world_state["machines"]["11,10"] = {
             "type": "Reactor",
             "enabled": True,
             "generation_kw": 8.0,
@@ -505,6 +506,7 @@ def test_oxygen_generator_needs_power_to_produce_oxygen() -> None:
             for x in range(50):
                 engine.world_state["grid"][y][x] = "Wall"
         engine.world_state["grid"][10][10] = "Floor"
+        engine.world_state["grid"][10][11] = "Floor"
         engine._recompute_compartments()
         engine.world_state["compartments"][0]["oxygen_percent"] = 40.0
 
@@ -516,7 +518,7 @@ def test_oxygen_generator_needs_power_to_produce_oxygen() -> None:
         engine._update_oxygen()
         without_power = engine.world_state["compartments"][0]["oxygen_percent"]
 
-        engine.world_state["machines"]["0,0"] = {"type": "Reactor", "enabled": True, "generation_kw": 10.0}
+        engine.world_state["machines"]["11,10"] = {"type": "Reactor", "enabled": True, "generation_kw": 10.0}
         engine._update_power()
         engine._update_oxygen()
         with_power = engine.world_state["compartments"][0]["oxygen_percent"]
@@ -577,6 +579,35 @@ def test_reseal_after_breach_stabilizes_oxygen() -> None:
     asyncio.run(run())
 
 
+
+def test_power_topology_does_not_share_between_disconnected_compartments() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        for y in range(50):
+            for x in range(50):
+                engine.world_state["grid"][y][x] = "Wall"
+
+        engine.world_state["grid"][10][10] = "Floor"
+        engine.world_state["grid"][10][11] = "Floor"
+        engine.world_state["grid"][20][20] = "Floor"
+        engine.world_state["grid"][20][21] = "Floor"
+        engine._recompute_compartments()
+
+        engine.world_state["machines"] = {
+            "10,10": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 3.0, "consume_kw": 2.0},
+            "11,10": {"type": "Reactor", "enabled": True, "generation_kw": 6.0},
+            "20,20": {"type": "Light", "enabled": True, "consume_kw": 1.0},
+        }
+
+        engine._update_power()
+        state = engine.world_state["power_state"]
+
+        assert "10,10" in state["powered_consumers"]
+        assert "20,20" in state["unpowered_consumers"]
+        assert any(n["network_id"].startswith("compartment:") for n in state["networks"])
+
+    asyncio.run(run())
+
 def test_power_events_emitted_for_brownout_and_recovery() -> None:
     async def run() -> None:
         engine = SimulationEngine()
@@ -600,3 +631,163 @@ def test_power_events_emitted_for_brownout_and_recovery() -> None:
         assert any(e.get("event") == "power_recovered" for e in second_events)
 
     asyncio.run(run())
+
+
+def test_phase4_initializes_persistent_npc_roster() -> None:
+    engine = SimulationEngine()
+    npcs = engine.world_state.get("npcs", [])
+    assert len(npcs) == 10
+    assert engine.world_state.get("population") == 10
+    assert all(1 <= int(npc.get("speed", 0)) <= 4 for npc in npcs)
+
+
+def test_npc_moves_diagonally_toward_higher_oxygen() -> None:
+    engine = SimulationEngine()
+    # Keep one NPC only for deterministic assertion
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-test",
+            "name": "Test",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+        }
+    ]
+
+    # Seal world and create 2x2 room so (6,6) can be the best tile.
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][6] = "Floor"
+    engine.world_state["grid"][6][5] = "Floor"
+    engine.world_state["grid"][6][6] = "Floor"
+    engine._recompute_compartments()
+
+    cid = int(engine.world_state["compartment_index"]["5,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == cid:
+            comp["oxygen_percent"] = 10.0
+
+    # Build a second compartment on diagonal with better oxygen by splitting walls
+    engine.world_state["grid"][6][6] = "Floor"
+    # force oxygen preference at destination using same compartment by local tweak through helper-compatible map
+    for comp in engine.world_state["compartments"]:
+        comp["oxygen_percent"] = 10.0
+
+    # Use direct method to choose diagonal by making one candidate's compartment richer.
+    # Create isolated richer tile by recalculating with separation.
+    engine.world_state["grid"][5][6] = "Wall"
+    engine.world_state["grid"][6][5] = "Wall"
+    engine._recompute_compartments()
+    low = int(engine.world_state["compartment_index"]["5,5"])
+    high = int(engine.world_state["compartment_index"]["6,6"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == low:
+            comp["oxygen_percent"] = 10.0
+        if int(comp["id"]) == high:
+            comp["oxygen_percent"] = 90.0
+
+    npc_changes, _, _ = engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (6, 6)
+    assert any(change.get("type") == "npc_move" for change in npc_changes)
+
+
+def test_npc_death_appends_log_and_dispose_body_work_order() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-doom",
+            "name": "Doom",
+            "x": 8,
+            "y": 8,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 8.0,
+            "alive": True,
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][8][8] = "Floor"
+    engine._recompute_compartments()
+    comp_id = int(engine.world_state["compartment_index"]["8,8"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == comp_id:
+            comp["oxygen_percent"] = 0.0
+
+    engine.tick = 42
+    npc_changes, work_order_changes, death_appends = engine._update_npcs()
+
+    assert engine.world_state["npcs"][0]["alive"] is False
+    assert engine.world_state["population"] == 0
+    assert len(death_appends) == 1
+    assert death_appends[0]["cause"] == "suffocation"
+    assert len(work_order_changes) == 1
+    assert work_order_changes[0]["work_order"]["work_type"] == "DisposeBody"
+    assert any(change.get("type") == "npc_death" for change in npc_changes)
+
+
+def test_npc_path_search_can_route_through_door_to_safer_compartment() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-route",
+            "name": "Route",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][6] = "Door"
+    engine.world_state["door_states"]["6,5"] = {"open": True}
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+
+    left = int(engine.world_state["compartment_index"]["5,5"])
+    right = int(engine.world_state["compartment_index"]["7,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == left:
+            comp["oxygen_percent"] = 5.0
+        if int(comp["id"]) == right:
+            comp["oxygen_percent"] = 85.0
+
+    engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (6, 5)
+
+
+def test_door_tile_oxygen_uses_adjacent_compartment_values() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][6] = "Door"
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+
+    left = int(engine.world_state["compartment_index"]["5,5"])
+    right = int(engine.world_state["compartment_index"]["7,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == left:
+            comp["oxygen_percent"] = 11.0
+        if int(comp["id"]) == right:
+            comp["oxygen_percent"] = 73.0
+
+    oxygen = engine._oxygen_at_tile(6, 5, engine.world_state["compartment_index"], {int(c["id"]): c for c in engine.world_state["compartments"]})
+    assert oxygen == 73.0
