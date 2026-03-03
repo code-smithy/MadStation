@@ -74,13 +74,17 @@
 
 **Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; Phase 2 closure candidate; remaining work is mostly invariants/protocol polish.)
 
-## Phase 3 — Power + Priority Load Shedding (Days 8–10)
+## Phase 3 — Power + Priority Load Shedding (Days 8–10) 🚧 In Progress
 
-- Implement global power model:
-  - generation,
-  - battery discharge,
-  - tiered allocation in declared priority order.
-- Recompute power graph only on topology-relevant change.
+### Phase 3A (completed in current iteration)
+- Implemented global power model with generation, battery discharge/charge, and tiered allocation.
+- Added power-state observability (`generation`, `demand`, `powered/unpowered`, `disabled_priorities`).
+- Wired oxygen generator production to power availability.
+
+### Phase 3B (next)
+- Expand machine classes and tier policy from constants docs.
+- Add topology-aware power graph recalculation (currently global model).
+- Add power-failure event markers in protocol deltas.
 
 **Exit criteria:** deficits consistently disable lower tiers first and recover deterministically.
 
@@ -187,3 +191,6 @@ Phase 1 closure, verification mapping, and handoff notes are documented in `docs
 
 
 Phase 2 split details are tracked in `docs/phase2/PHASE2_SPLIT_PLAN.md`.
+
+
+Phase 3 split details are tracked in `docs/phase3/PHASE3_SPLIT_PLAN.md`.

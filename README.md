@@ -13,6 +13,7 @@
 - `docs/phase2/PHASE2_SPLIT_PLAN.md`
 - `docs/phase2/PHASE2_NEXT_STEPS.md`
 - `docs/phase2/USER_SIDE_TESTING.md`
+- `docs/phase3/PHASE3_SPLIT_PLAN.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -131,3 +132,8 @@ Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffus
 8. Refresh `/world` to confirm tile mutations + compartment oxygen drift/diffusion/generation.
 
 See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.
+
+
+## Phase 3 progress
+
+Phase 3A (global power generation/discharge/load-shedding + oxygen-generator power gating) is implemented. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.

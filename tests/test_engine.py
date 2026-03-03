@@ -388,8 +388,15 @@ def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
             "type": "OxygenGenerator",
             "enabled": True,
             "rate_per_tick": 5.0,
+            "consume_kw": 2.0,
+        }
+        engine.world_state["machines"]["0,0"] = {
+            "type": "Reactor",
+            "enabled": True,
+            "generation_kw": 8.0,
         }
 
+        engine._update_power()
         engine._update_oxygen()
         assert engine.world_state["compartments"][0]["oxygen_percent"] > 20.0
 
@@ -444,5 +451,77 @@ def test_build_rejects_invalid_machine_payload() -> None:
         )
         ack = await engine.enqueue_command("anon-test", invalid_machine)
         assert ack.result == CommandResult.INVALID_PAYLOAD
+
+    asyncio.run(run())
+
+
+def test_power_load_shedding_disables_low_priority_consumers() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        engine.world_state["machines"] = {
+            "1,1": {"type": "SolarPanel", "enabled": True, "generation_kw": 2.0},
+            "2,2": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0},
+            "3,3": {"type": "Light", "enabled": True, "consume_kw": 1.0},
+        }
+
+        engine._update_power()
+        state = engine.world_state["power_state"]
+
+        assert "2,2" in state["powered_consumers"]
+        assert "3,3" in state["unpowered_consumers"]
+        assert 7 in state["disabled_priorities"]
+
+    asyncio.run(run())
+
+
+def test_battery_bridges_power_deficit_for_oxygen_generator() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        engine.world_state["machines"] = {
+            "10,10": {
+                "type": "Battery",
+                "enabled": True,
+                "capacity": 20.0,
+                "stored": 10.0,
+                "discharge_kw": 4.0,
+                "charge_kw": 2.0,
+            },
+            "2,2": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0},
+        }
+        engine._update_power()
+        state = engine.world_state["power_state"]
+
+        assert "2,2" in state["powered_consumers"]
+        assert state["battery_discharge"] > 0
+        assert engine.world_state["machines"]["10,10"]["stored"] < 10.0
+
+    asyncio.run(run())
+
+
+def test_oxygen_generator_needs_power_to_produce_oxygen() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        for y in range(50):
+            for x in range(50):
+                engine.world_state["grid"][y][x] = "Wall"
+        engine.world_state["grid"][10][10] = "Floor"
+        engine._recompute_compartments()
+        engine.world_state["compartments"][0]["oxygen_percent"] = 40.0
+
+        engine.world_state["machines"] = {
+            "10,10": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 5.0, "consume_kw": 3.0}
+        }
+
+        engine._update_power()
+        engine._update_oxygen()
+        without_power = engine.world_state["compartments"][0]["oxygen_percent"]
+
+        engine.world_state["machines"]["0,0"] = {"type": "Reactor", "enabled": True, "generation_kw": 10.0}
+        engine._update_power()
+        engine._update_oxygen()
+        with_power = engine.world_state["compartments"][0]["oxygen_percent"]
+
+        assert without_power == 40.0
+        assert with_power > without_power
 
     asyncio.run(run())

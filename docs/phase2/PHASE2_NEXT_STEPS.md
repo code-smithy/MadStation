@@ -28,3 +28,6 @@
 - Build a sealed room with a door.
 - Toggle/open door and observe oxygen equalization across connected compartments.
 - Close door and verify independent pressure behavior.
+
+
+Note: Power and load-shedding moved to Phase 3A and are tracked in `docs/phase3/PHASE3_SPLIT_PLAN.md`.

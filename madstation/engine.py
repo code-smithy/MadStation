@@ -21,7 +21,19 @@ TILE_WINDOW = "Window"
 ALL_TILE_TYPES = {TILE_VACUUM, TILE_FLOOR, TILE_WALL, TILE_DOOR, TILE_AIRLOCK, TILE_WINDOW}
 WALKABLE_TILES = {TILE_FLOOR, TILE_DOOR, TILE_AIRLOCK}
 COMPARTMENT_FILL_TILES = {TILE_FLOOR, TILE_AIRLOCK}
+
 MACHINE_OXYGEN_GENERATOR = "OxygenGenerator"
+MACHINE_SOLAR_PANEL = "SolarPanel"
+MACHINE_REACTOR = "Reactor"
+MACHINE_BATTERY = "Battery"
+MACHINE_HEATER = "Heater"
+MACHINE_LIGHT = "Light"
+
+POWER_PRIORITY = {
+    MACHINE_OXYGEN_GENERATOR: 1,
+    MACHINE_HEATER: 3,
+    MACHINE_LIGHT: 7,
+}
 
 
 @dataclass
@@ -44,6 +56,15 @@ class SimulationEngine:
         self.world_state: dict = {
             "world": {"width": width, "height": height},
             "power": {"mode": "global_network"},
+            "power_state": {
+                "generation": 0.0,
+                "demand": 0.0,
+                "battery_discharge": 0.0,
+                "battery_charge": 0.0,
+                "powered_consumers": [],
+                "unpowered_consumers": [],
+                "disabled_priorities": [],
+            },
             "population": 0,
             "grid": [[TILE_FLOOR for _ in range(width)] for _ in range(height)],
             "door_states": {},
@@ -79,38 +100,23 @@ class SimulationEngine:
             return cached_ack
 
         if not self._allowed_by_throttle(session_id):
-            ack = CommandAck(
-                client_command_id=command.client_command_id,
-                result=CommandResult.THROTTLED,
-                tick=self.tick,
-            )
+            ack = CommandAck(client_command_id=command.client_command_id, result=CommandResult.THROTTLED, tick=self.tick)
             self.command_ack_cache[session_id][command.client_command_id] = ack
             return ack
 
         if not self._validate_command_payload(command):
-            ack = CommandAck(
-                client_command_id=command.client_command_id,
-                result=CommandResult.INVALID_PAYLOAD,
-                tick=self.tick,
-            )
+            ack = CommandAck(client_command_id=command.client_command_id, result=CommandResult.INVALID_PAYLOAD, tick=self.tick)
             self.command_ack_cache[session_id][command.client_command_id] = ack
             return ack
 
         await self.command_queue.put(PendingCommand(session_id=session_id, command=command, enqueued_at_tick=self.tick))
         self.last_action_at[session_id] = time.monotonic()
-        ack = CommandAck(
-            client_command_id=command.client_command_id,
-            result=CommandResult.QUEUED,
-            tick=self.tick,
-        )
+        ack = CommandAck(client_command_id=command.client_command_id, result=CommandResult.QUEUED, tick=self.tick)
         self.command_ack_cache[session_id][command.client_command_id] = ack
         return ack
 
     def world_snapshot(self) -> dict:
-        return {
-            "tick": self.tick,
-            "world": self.world_state,
-        }
+        return {"tick": self.tick, "world": self.world_state}
 
     def runtime_status(self) -> dict[str, int]:
         open_door_count = sum(
@@ -124,6 +130,8 @@ class SimulationEngine:
             "compartment_count": len(self.world_state["compartments"]),
             "open_door_count": open_door_count,
             "machine_count": len(self.world_state["machines"]),
+            "powered_consumer_count": len(self.world_state["power_state"].get("powered_consumers", [])),
+            "unpowered_consumer_count": len(self.world_state["power_state"].get("unpowered_consumers", [])),
         }
 
     def stop(self) -> None:
@@ -192,14 +200,15 @@ class SimulationEngine:
         if topology_changed:
             self._recompute_compartments()
 
+        self._update_power()
         self._update_oxygen()
+
         after_compartments = self._compartment_snapshot_map()
         compartment_changes = self._compartment_changes(before_compartments, after_compartments)
 
-        world_hash = self._world_hash()
         delta = DeltaTick(
             tick=self.tick,
-            world_hash=world_hash,
+            world_hash=self._world_hash(),
             command_count=applied,
             tile_changes=tile_changes,
             entity_changes=compartment_changes,
@@ -243,13 +252,7 @@ class SimulationEngine:
             machine = payload.get("machine")
             if machine is None:
                 return True
-            if not isinstance(machine, dict):
-                return False
-            machine_type = machine.get("type")
-            if machine_type != MACHINE_OXYGEN_GENERATOR:
-                return False
-            rate = machine.get("rate_per_tick", 2.0)
-            return isinstance(rate, (int, float)) and 0 < float(rate) <= 25.0
+            return self._validate_machine_payload(machine)
 
         if command.type is CommandType.CREATE_WORK_ORDER:
             work_type = payload.get("work_type")
@@ -261,6 +264,36 @@ class SimulationEngine:
             return self._validate_xy(location.get("x"), location.get("y"))
 
         return False
+
+    def _validate_machine_payload(self, machine: object) -> bool:
+        if not isinstance(machine, dict):
+            return False
+        machine_type = machine.get("type")
+        if machine_type == MACHINE_OXYGEN_GENERATOR:
+            rate = machine.get("rate_per_tick", 2.0)
+            consume = machine.get("consume_kw", 2.0)
+            return self._valid_positive(rate, 25.0) and self._valid_positive(consume, 25.0)
+        if machine_type == MACHINE_SOLAR_PANEL:
+            return self._valid_positive(machine.get("generation_kw", 4.0), 100.0)
+        if machine_type == MACHINE_REACTOR:
+            return self._valid_positive(machine.get("generation_kw", 12.0), 200.0)
+        if machine_type == MACHINE_BATTERY:
+            return (
+                self._valid_positive(machine.get("capacity", 50.0), 10000.0)
+                and self._valid_positive(machine.get("discharge_kw", 5.0), 200.0)
+                and self._valid_non_negative(machine.get("stored", 0.0), 10000.0)
+            )
+        if machine_type in {MACHINE_HEATER, MACHINE_LIGHT}:
+            return self._valid_positive(machine.get("consume_kw", 1.0), 100.0)
+        return False
+
+    @staticmethod
+    def _valid_positive(value: object, max_value: float) -> bool:
+        return isinstance(value, (int, float)) and 0 < float(value) <= max_value
+
+    @staticmethod
+    def _valid_non_negative(value: object, max_value: float) -> bool:
+        return isinstance(value, (int, float)) and 0 <= float(value) <= max_value
 
     def _allowed_by_throttle(self, session_id: str) -> bool:
         prev = self.last_action_at.get(session_id)
@@ -282,28 +315,20 @@ class SimulationEngine:
         y = command.payload["y"]
         key = self._xy_key(x, y)
         before = self.world_state["grid"][y][x]
-
-        if command.type is CommandType.BUILD:
-            after = command.payload.get("tile_type", TILE_WALL)
-        else:
-            after = TILE_VACUUM
+        after = command.payload.get("tile_type", TILE_WALL) if command.type is CommandType.BUILD else TILE_VACUUM
 
         changed_tile = before != after
         if changed_tile:
             self.world_state["grid"][y][x] = after
             if after == TILE_DOOR:
                 self.world_state["door_states"][key] = {"open": False}
-            elif key in self.world_state["door_states"]:
+            else:
                 self.world_state["door_states"].pop(key, None)
 
         machine_payload = command.payload.get("machine") if command.type is CommandType.BUILD else None
         machine_changed = False
-        if isinstance(machine_payload, dict) and machine_payload.get("type") == MACHINE_OXYGEN_GENERATOR:
-            self.world_state["machines"][key] = {
-                "type": MACHINE_OXYGEN_GENERATOR,
-                "enabled": True,
-                "rate_per_tick": float(machine_payload.get("rate_per_tick", 2.0)),
-            }
+        if isinstance(machine_payload, dict):
+            self.world_state["machines"][key] = self._normalize_machine(machine_payload)
             machine_changed = True
         elif key in self.world_state["machines"] and (command.type is CommandType.DECONSTRUCT or changed_tile):
             self.world_state["machines"].pop(key, None)
@@ -311,11 +336,55 @@ class SimulationEngine:
 
         if not changed_tile and not machine_changed:
             return None, False
-
         if changed_tile:
             return {"x": x, "y": y, "before": before, "after": after}, True
-
         return {"x": x, "y": y, "type": "machine_change", "machine_key": key}, True
+
+    def _normalize_machine(self, machine: dict) -> dict:
+        machine_type = machine.get("type")
+        if machine_type == MACHINE_OXYGEN_GENERATOR:
+            return {
+                "type": MACHINE_OXYGEN_GENERATOR,
+                "enabled": bool(machine.get("enabled", True)),
+                "rate_per_tick": float(machine.get("rate_per_tick", 2.0)),
+                "consume_kw": float(machine.get("consume_kw", 2.0)),
+            }
+        if machine_type == MACHINE_SOLAR_PANEL:
+            return {
+                "type": MACHINE_SOLAR_PANEL,
+                "enabled": bool(machine.get("enabled", True)),
+                "generation_kw": float(machine.get("generation_kw", 4.0)),
+            }
+        if machine_type == MACHINE_REACTOR:
+            return {
+                "type": MACHINE_REACTOR,
+                "enabled": bool(machine.get("enabled", True)),
+                "generation_kw": float(machine.get("generation_kw", 12.0)),
+            }
+        if machine_type == MACHINE_BATTERY:
+            capacity = float(machine.get("capacity", 50.0))
+            stored = float(machine.get("stored", capacity / 2))
+            return {
+                "type": MACHINE_BATTERY,
+                "enabled": bool(machine.get("enabled", True)),
+                "capacity": capacity,
+                "stored": max(0.0, min(capacity, stored)),
+                "discharge_kw": float(machine.get("discharge_kw", 5.0)),
+                "charge_kw": float(machine.get("charge_kw", 5.0)),
+            }
+        if machine_type == MACHINE_HEATER:
+            return {
+                "type": MACHINE_HEATER,
+                "enabled": bool(machine.get("enabled", True)),
+                "consume_kw": float(machine.get("consume_kw", 2.0)),
+            }
+        if machine_type == MACHINE_LIGHT:
+            return {
+                "type": MACHINE_LIGHT,
+                "enabled": bool(machine.get("enabled", True)),
+                "consume_kw": float(machine.get("consume_kw", 1.0)),
+            }
+        return {"type": str(machine_type), "enabled": False}
 
     def _auto_update_doors(self) -> list[dict]:
         width = self.world_state["world"]["width"]
@@ -365,9 +434,7 @@ class SimulationEngine:
         compartment_index: dict[str, int] = {}
         compartments: list[dict] = []
 
-        old_map = {
-            int(c["id"]): float(c.get("oxygen_percent", 100.0)) for c in self.world_state.get("compartments", [])
-        }
+        old_map = {int(c["id"]): float(c.get("oxygen_percent", 100.0)) for c in self.world_state.get("compartments", [])}
         old_index = self.world_state.get("compartment_index", {})
 
         def oxygen_for_tile(tx: int, ty: int) -> float:
@@ -379,9 +446,7 @@ class SimulationEngine:
         comp_id = 1
         for y in range(height):
             for x in range(width):
-                if (x, y) in visited:
-                    continue
-                if grid[y][x] not in COMPARTMENT_FILL_TILES:
+                if (x, y) in visited or grid[y][x] not in COMPARTMENT_FILL_TILES:
                     continue
 
                 queue = [(x, y)]
@@ -394,9 +459,7 @@ class SimulationEngine:
                     tiles.append((cx, cy))
                     oxygen_total += oxygen_for_tile(cx, cy)
                     for nx, ny in self._neighbors4(cx, cy, width, height):
-                        if (nx, ny) in visited:
-                            continue
-                        if grid[ny][nx] not in COMPARTMENT_FILL_TILES:
+                        if (nx, ny) in visited or grid[ny][nx] not in COMPARTMENT_FILL_TILES:
                             continue
                         visited.add((nx, ny))
                         queue.append((nx, ny))
@@ -420,6 +483,81 @@ class SimulationEngine:
         self.world_state["compartments"] = compartments
         self.world_state["compartment_index"] = compartment_index
 
+    def _update_power(self) -> None:
+        machines = self.world_state["machines"]
+        generation = 0.0
+        demand = 0.0
+        consumers: list[tuple[str, int, float]] = []
+        battery_keys: list[str] = []
+
+        for key in sorted(machines.keys()):
+            machine = machines[key]
+            if not isinstance(machine, dict) or not machine.get("enabled", True):
+                continue
+            mtype = machine.get("type")
+            if mtype in {MACHINE_SOLAR_PANEL, MACHINE_REACTOR}:
+                generation += float(machine.get("generation_kw", 0.0))
+            elif mtype == MACHINE_BATTERY:
+                battery_keys.append(key)
+            elif mtype in POWER_PRIORITY:
+                consume = float(machine.get("consume_kw", 0.0))
+                demand += consume
+                consumers.append((key, POWER_PRIORITY[mtype], consume))
+
+        deficit = max(0.0, demand - generation)
+        battery_discharge = 0.0
+        for key in battery_keys:
+            if deficit <= 0:
+                break
+            battery = machines[key]
+            available = min(float(battery.get("stored", 0.0)), float(battery.get("discharge_kw", 0.0)))
+            draw = min(deficit, available)
+            if draw <= 0:
+                continue
+            battery["stored"] = max(0.0, float(battery.get("stored", 0.0)) - draw)
+            battery_discharge += draw
+            deficit -= draw
+
+        total_available = generation + battery_discharge
+        powered_consumers: list[str] = []
+        unpowered_consumers: list[str] = []
+        disabled_priorities: set[int] = set()
+
+        for key, priority, consume in sorted(consumers, key=lambda item: (item[1], item[0])):
+            if total_available >= consume:
+                total_available -= consume
+                powered_consumers.append(key)
+            else:
+                unpowered_consumers.append(key)
+                disabled_priorities.add(priority)
+
+        # charge batteries with surplus after serving powered consumers
+        battery_charge = 0.0
+        for key in battery_keys:
+            if total_available <= 0:
+                break
+            battery = machines[key]
+            capacity = float(battery.get("capacity", 0.0))
+            stored = float(battery.get("stored", 0.0))
+            room = max(0.0, capacity - stored)
+            charge_rate = float(battery.get("charge_kw", 0.0))
+            gain = min(total_available, room, charge_rate)
+            if gain <= 0:
+                continue
+            battery["stored"] = stored + gain
+            battery_charge += gain
+            total_available -= gain
+
+        self.world_state["power_state"] = {
+            "generation": round(generation, 3),
+            "demand": round(demand, 3),
+            "battery_discharge": round(battery_discharge, 3),
+            "battery_charge": round(battery_charge, 3),
+            "powered_consumers": powered_consumers,
+            "unpowered_consumers": unpowered_consumers,
+            "disabled_priorities": sorted(disabled_priorities),
+        }
+
     def _update_oxygen(self) -> None:
         grid = self.world_state["grid"]
         width = self.world_state["world"]["width"]
@@ -432,7 +570,6 @@ class SimulationEngine:
         oxygen_values: dict[int, float] = {int(c["id"]): float(c["oxygen_percent"]) for c in compartments}
         oxygen_delta: dict[int, float] = {int(c["id"]): 0.0 for c in compartments}
 
-        # direct leak to vacuum from compartment tiles
         for key, comp_id in index.items():
             x_str, y_str = key.split(",")
             x, y = int(x_str), int(y_str)
@@ -440,19 +577,19 @@ class SimulationEngine:
                 if grid[ny][nx] == TILE_VACUUM:
                     leak_counts[int(comp_id)] += 1
 
-        # oxygen generation machine hooks
+        powered = set(self.world_state.get("power_state", {}).get("powered_consumers", []))
         for key, machine in self.world_state["machines"].items():
-            if not isinstance(machine, dict):
+            if not isinstance(machine, dict) or not machine.get("enabled", True):
                 continue
-            if machine.get("type") != MACHINE_OXYGEN_GENERATOR or not machine.get("enabled", True):
+            if machine.get("type") != MACHINE_OXYGEN_GENERATOR:
+                continue
+            if key not in powered:
                 continue
             comp_id = index.get(key)
             if comp_id is None:
                 continue
-            rate = float(machine.get("rate_per_tick", 2.0))
-            oxygen_delta[int(comp_id)] += rate
+            oxygen_delta[int(comp_id)] += float(machine.get("rate_per_tick", 2.0))
 
-        # door-driven diffusion/leak
         for key, state in self.world_state["door_states"].items():
             if not state.get("open", False):
                 continue
@@ -471,8 +608,7 @@ class SimulationEngine:
 
             unique_adjacent = sorted(set(adjacent_comp_ids))
             if len(unique_adjacent) >= 2:
-                left = unique_adjacent[0]
-                right = unique_adjacent[1]
+                left, right = unique_adjacent[0], unique_adjacent[1]
                 gradient = oxygen_values[left] - oxygen_values[right]
                 transfer = max(-3.0, min(3.0, gradient * 0.15))
                 oxygen_delta[left] -= transfer
@@ -508,16 +644,8 @@ class SimulationEngine:
         for cid, current in after.items():
             previous = before.get(cid)
             if previous is None:
-                changes.append(
-                    {
-                        "type": "compartment_change",
-                        "compartment_id": cid,
-                        "reason": "created",
-                        "current": current,
-                    }
-                )
+                changes.append({"type": "compartment_change", "compartment_id": cid, "reason": "created", "current": current})
                 continue
-
             if (
                 current["oxygen_percent"] != previous["oxygen_percent"]
                 or current["pressure"] != previous["pressure"]
@@ -534,15 +662,7 @@ class SimulationEngine:
                 )
 
         for cid in before.keys() - after.keys():
-            changes.append(
-                {
-                    "type": "compartment_change",
-                    "compartment_id": cid,
-                    "reason": "removed",
-                    "previous": before[cid],
-                }
-            )
-
+            changes.append({"type": "compartment_change", "compartment_id": cid, "reason": "removed", "previous": before[cid]})
         return changes
 
     @staticmethod
