@@ -140,6 +140,7 @@
 
     let ws;
     let wsAttempt = 0;
+    let apiBaseHint = null;
 
     function wsCandidates() {
       const params = new URLSearchParams(location.search);
@@ -151,6 +152,51 @@
       cands.push('ws://127.0.0.1:8000/ws');
       cands.push('ws://localhost:8000/ws');
       return Array.from(new Set(cands));
+    }
+
+    function httpBaseFromWs(wsUrl) {
+      try {
+        const parsed = new URL(wsUrl);
+        const proto = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+        return `${proto}//${parsed.host}`;
+      } catch {
+        return null;
+      }
+    }
+
+    function apiBaseCandidates() {
+      const params = new URLSearchParams(location.search);
+      const fromQuery = params.get('api');
+      const cands = [];
+      if (fromQuery) cands.push(fromQuery.replace(/\/$/, ''));
+      if (apiBaseHint) cands.push(apiBaseHint.replace(/\/$/, ''));
+      if (location.origin && location.origin !== 'null') cands.push(location.origin.replace(/\/$/, ''));
+      cands.push('http://127.0.0.1:8000');
+      cands.push('http://localhost:8000');
+      return Array.from(new Set(cands));
+    }
+
+    async function fetchJson(path) {
+      let lastError = null;
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+      for (const base of apiBaseCandidates()) {
+        const url = `${base}${normalizedPath}`;
+        try {
+          const resp = await fetch(url);
+          const contentType = resp.headers.get('content-type') || '';
+          if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${url}`);
+          if (!contentType.toLowerCase().includes('application/json')) {
+            throw new Error(`Non-JSON response from ${url} (content-type=${contentType || 'unknown'})`);
+          }
+          if (apiBaseHint !== base) {
+            apiBaseHint = base;
+          }
+          return await resp.json();
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error(`Unable to fetch ${path}`);
     }
 
     function appendLog(obj) {
@@ -186,8 +232,7 @@
     }
 
     async function refreshWorld() {
-      const resp = await fetch('/world');
-      const payload = await resp.json();
+      const payload = await fetchJson('/world');
       const world = payload.world;
       tickEl.textContent = `tick: ${payload.tick}`;
 
@@ -215,8 +260,7 @@
     }
 
     async function refreshStatus() {
-      const resp = await fetch('/status');
-      const s = await resp.json();
+      const s = await fetchJson('/status');
       statusEl.textContent = [
         `tick=${s.tick}`,
         `queued=${s.queued_commands}`,
@@ -233,6 +277,8 @@
       const target = candidates[wsAttempt % candidates.length];
       wsAttempt += 1;
       document.getElementById('wsUrl').textContent = `ws: ${target}`;
+      const derivedApiBase = httpBaseFromWs(target);
+      if (derivedApiBase) apiBaseHint = derivedApiBase;
 
       try {
         ws = new WebSocket(target);
