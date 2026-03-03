@@ -29,7 +29,7 @@ If you see `externally-managed-environment`, install inside a virtual environmen
 make install
 ```
 
-This creates `.venv`, upgrades pip, and installs the project dependencies.
+This creates `.venv`, upgrades pip, and installs project dependencies (including WebSocket runtime support).
 
 ## Run server
 
@@ -38,7 +38,6 @@ make run
 ```
 
 Then open `http://127.0.0.1:8000/health` and `http://127.0.0.1:8000/status`.
-
 
 ## Connect a client (WebSocket)
 
@@ -56,6 +55,14 @@ ws.onmessage = (event) => console.log("WS message:", event.data);
 
 3. In another tab, check `http://127.0.0.1:8000/status`.
    - You should see `connected_clients` increase while the socket remains open.
+
+### Quick `wscat` test
+
+```bash
+wscat -c ws://127.0.0.1:8000/ws
+```
+
+If connected, `/status` should show `connected_clients: 1`.
 
 ### Send a command over the same socket
 
@@ -82,3 +89,7 @@ make test
 - `ModuleNotFoundError: No module named 'fastapi'`
   - You are likely running system `uvicorn` without project dependencies.
   - Fix by running `make install` and then `make run` so `uvicorn` comes from `.venv`.
+
+- `No supported WebSocket library detected`
+  - Your environment is missing `websockets`/`wsproto` for Uvicorn upgrades.
+  - Fix with `make install` (this project now installs `websockets` by default).

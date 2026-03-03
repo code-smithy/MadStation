@@ -16,4 +16,4 @@ run:
 	$(UVICORN) madstation.app:app --reload
 
 test:
-	python -m pytest -q
+	$(PYTHON) -m pytest -q
