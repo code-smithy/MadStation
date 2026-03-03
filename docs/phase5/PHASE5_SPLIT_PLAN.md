@@ -26,3 +26,10 @@ Phase 5 is being split into foundational logistics first, then full life-support
 - Work orders drive physical item state transitions (no abstract pool).
 - Storage inventories reflect deterministic haul/placement outcomes.
 - Core life-support logistics chain can be executed end-to-end.
+
+
+## Phase 5C (started in this iteration)
+
+- Coupled `FeedOxygenGenerator` to actual generator tiles (machine presence + enabled state + powered consumer gate). ✅
+- Added generator-target metadata for feed orders and stricter command validation for feed generator location. ✅
+- Added deterministic requeue behavior when feed is blocked by generator state/power. ✅

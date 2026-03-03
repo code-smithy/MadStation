@@ -333,9 +333,18 @@ class SimulationEngine:
                 return False
             return self._validate_xy(destination.get("x"), destination.get("y"))
 
-        if work_type in {"RefineIce", "FeedOxygenGenerator"}:
+        if work_type == "RefineIce":
             item_id = metadata.get("item_id")
             return isinstance(item_id, str) and bool(item_id)
+
+        if work_type == "FeedOxygenGenerator":
+            item_id = metadata.get("item_id")
+            generator_location = metadata.get("generator_location")
+            if not isinstance(item_id, str) or not item_id:
+                return False
+            if not isinstance(generator_location, dict):
+                return False
+            return self._validate_xy(generator_location.get("x"), generator_location.get("y"))
 
         return False
 
@@ -438,6 +447,9 @@ class SimulationEngine:
             if work_type == "HaulItem":
                 destination = metadata.get("destination", {})
                 order["destination"] = {"x": int(destination["x"]), "y": int(destination["y"])}
+            if work_type == "FeedOxygenGenerator":
+                generator_location = metadata.get("generator_location", {})
+                order["generator_location"] = {"x": int(generator_location["x"]), "y": int(generator_location["y"])}
 
         self.world_state.setdefault("work_orders", []).append(order)
         return order
@@ -1134,18 +1146,21 @@ class SimulationEngine:
                     self.world_state.setdefault("work_orders", []).append(refine_order)
                     work_order_changes.append({"type": "work_order_created_auto", "work_order": refine_order})
                 elif str(item.get("item_type")) == "WaterUnit":
-                    feed_order = {
-                        "id": f"wo-feed-{item['id']}",
-                        "work_type": "FeedOxygenGenerator",
-                        "status": "Queued",
-                        "location": {"x": int(item["location"]["x"]), "y": int(item["location"]["y"])},
-                        "item_id": item["id"],
-                        "created_tick": self.tick,
-                        "progress": 0,
-                        "required_progress": 1,
-                    }
-                    self.world_state.setdefault("work_orders", []).append(feed_order)
-                    work_order_changes.append({"type": "work_order_created_auto", "work_order": feed_order})
+                    generator_location = self._nearest_oxygen_generator_location(int(item["location"]["x"]), int(item["location"]["y"]))
+                    if generator_location is not None:
+                        feed_order = {
+                            "id": f"wo-feed-{item['id']}",
+                            "work_type": "FeedOxygenGenerator",
+                            "status": "Queued",
+                            "location": {"x": int(item["location"]["x"]), "y": int(item["location"]["y"])},
+                            "item_id": item["id"],
+                            "generator_location": {"x": int(generator_location["x"]), "y": int(generator_location["y"])},
+                            "created_tick": self.tick,
+                            "progress": 0,
+                            "required_progress": 1,
+                        }
+                        self.world_state.setdefault("work_orders", []).append(feed_order)
+                        work_order_changes.append({"type": "work_order_created_auto", "work_order": feed_order})
         elif work_type == "RefineIce":
             source_item = self._item_for_order_item(active_order)
             if source_item is not None and not source_item.get("consumed", False):
@@ -1180,15 +1195,43 @@ class SimulationEngine:
                     work_order_changes.append({"type": "work_order_created_auto", "work_order": haul_order})
         elif work_type == "FeedOxygenGenerator":
             water_item = self._item_for_order_item(active_order)
+            gx = int(npc["x"])
+            gy = int(npc["y"])
+            machine = self.world_state.get("machines", {}).get(self._xy_key(gx, gy))
+            if not isinstance(machine, dict) or machine.get("type") != MACHINE_OXYGEN_GENERATOR or not bool(machine.get("enabled", True)):
+                active_order["status"] = "Queued"
+                active_order["progress"] = 0
+                active_order.pop("assignee_npc_id", None)
+                active_order.pop("assigned_tick", None)
+                npc["current_work_order_id"] = None
+                work_order_changes.append({
+                    "type": "work_order_unassigned",
+                    "work_order_id": active_order["id"],
+                    "reason": "generator_missing_or_disabled",
+                })
+                return
+            if not self._consumer_is_powered(self._xy_key(gx, gy)):
+                active_order["status"] = "Queued"
+                active_order["progress"] = 0
+                active_order.pop("assignee_npc_id", None)
+                active_order.pop("assigned_tick", None)
+                npc["current_work_order_id"] = None
+                work_order_changes.append({
+                    "type": "work_order_unassigned",
+                    "work_order_id": active_order["id"],
+                    "reason": "generator_unpowered",
+                })
+                return
             if water_item is not None and not water_item.get("consumed", False):
                 water_item["consumed"] = True
                 water_item["consumed_tick"] = self.tick
-                comp_id = self.world_state.get("compartment_index", {}).get(self._xy_key(int(npc["x"]), int(npc["y"])))
+                comp_id = self.world_state.get("compartment_index", {}).get(self._xy_key(gx, gy))
                 if comp_id is not None:
                     for comp in self.world_state.get("compartments", []):
                         if int(comp.get("id", -1)) != int(comp_id):
                             continue
-                        comp["oxygen_percent"] = round(min(100.0, float(comp.get("oxygen_percent", 0.0)) + 2.0), 2)
+                        boost = float(machine.get("rate_per_tick", 2.0))
+                        comp["oxygen_percent"] = round(min(100.0, float(comp.get("oxygen_percent", 0.0)) + boost), 2)
                         comp["pressure"] = round(float(comp["oxygen_percent"]) / 100, 3)
                         break
                 npc_changes.append({"type": "item_consumed", "item_id": water_item["id"], "reason": "feed_oxygen_generator"})
@@ -1216,6 +1259,9 @@ class SimulationEngine:
                 return None
             holder = item.get("holder_npc_id")
             if holder == npc.get("id"):
+                destination = order.get("generator_location")
+                if isinstance(destination, dict) and isinstance(destination.get("x"), int) and isinstance(destination.get("y"), int):
+                    return int(destination["x"]), int(destination["y"])
                 destination = self._nearest_oxygen_generator_location(int(npc.get("x", 0)), int(npc.get("y", 0)))
                 if destination is not None:
                     return int(destination["x"]), int(destination["y"])
@@ -1557,6 +1603,12 @@ class SimulationEngine:
             if item.get("id") == item_id:
                 return item
         return None
+
+    def _consumer_is_powered(self, machine_key: str) -> bool:
+        for consumer in self.world_state.get("power_state", {}).get("powered_consumers", []):
+            if str(consumer) == machine_key:
+                return True
+        return False
 
     def _nearest_oxygen_generator_location(self, x: int, y: int) -> dict | None:
         ranked: list[tuple[int, str, dict]] = []

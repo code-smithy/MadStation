@@ -121,6 +121,11 @@
 
 **Exit criteria:** full life-support chain works end-to-end without teleportation.
 
+### Phase 5C (started in this iteration)
+- Coupled `FeedOxygenGenerator` execution to oxygen generator machine/power state. ✅
+- Added feed-generator command metadata validation (`generator_location`) and order targeting. ✅
+- Added deterministic requeue for blocked feed tasks (`generator_missing_or_disabled`, `generator_unpowered`). ✅
+
 ## Phase 6 — Persistence + Recovery + Basic Ops (Days 22–25)
 
 - Persist world, NPC roster, death log, work orders, machine configs.
