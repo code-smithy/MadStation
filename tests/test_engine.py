@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from madstation.engine import SimulationEngine, TILE_VACUUM, TILE_WALL
 from madstation.protocol import ClientCommand, CommandResult, CommandType
@@ -1802,3 +1803,36 @@ def test_phase5_end_to_end_chain_mine_to_feed_completes_without_teleportation() 
 
     after = next(comp for comp in engine.world_state["compartments"] if int(comp["id"]) == int(comp_id))["oxygen_percent"]
     assert after > 70.0
+
+
+def test_phase6_snapshot_written_on_cadence(tmp_path) -> None:
+    async def run() -> None:
+        snapshot_path = tmp_path / "snapshot.json"
+        engine = SimulationEngine(snapshot_path=str(snapshot_path), snapshot_cadence_ticks=2, load_snapshot=False)
+
+        await engine._execute_tick()
+        assert snapshot_path.exists() is False
+
+        await engine._execute_tick()
+        assert snapshot_path.exists() is True
+        payload = json.loads(snapshot_path.read_text())
+        assert int(payload["tick"]) == 2
+        assert isinstance(payload.get("world_state"), dict)
+        assert int(engine.runtime_status()["last_snapshot_tick"]) == 2
+
+    asyncio.run(run())
+
+
+def test_phase6_engine_restores_from_snapshot_on_restart(tmp_path) -> None:
+    snapshot_path = tmp_path / "snapshot.json"
+    first = SimulationEngine(snapshot_path=str(snapshot_path), snapshot_cadence_ticks=1, load_snapshot=False)
+    first.world_state["machines"]["20,20"] = {"type": "Light", "enabled": True, "consume_kw": 1.0}
+    first.tick = 7
+    first.server_sequence_id = 42
+    first._persist_snapshot()
+
+    restored = SimulationEngine(snapshot_path=str(snapshot_path), snapshot_cadence_ticks=1, load_snapshot=True)
+    assert restored.tick == 7
+    assert restored.server_sequence_id == 42
+    assert "20,20" in restored.world_state["machines"]
+    assert restored.runtime_status()["last_snapshot_tick"] == 7

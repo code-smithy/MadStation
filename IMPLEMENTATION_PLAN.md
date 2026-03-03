@@ -127,17 +127,18 @@
 - Added feed-generator command metadata validation (`generator_location`) and order targeting. ✅
 - Added deterministic requeue for blocked feed tasks (`generator_missing_or_disabled`, `generator_unpowered`). ✅
 
-## Phase 6 — Persistence + Recovery + Basic Ops (Days 22–25)
+## Phase 6 — Persistence + Recovery + Basic Ops (Days 22–25) 🚧 In Progress
 
-- Persist world, NPC roster, death log, work orders, machine configs.
-- Add configurable snapshot cadence.
-- Implement crash restart from last snapshot.
-- Add observability baseline:
-  - tick duration,
-  - queue depth,
-  - connected clients,
-  - death causes,
-  - idle NPC ratio.
+### Phase 6A (implemented in this iteration)
+- Persist world state snapshots on configurable cadence. ✅
+- Add configurable snapshot cadence/path runtime settings. ✅
+- Implement crash restart bootstrap from latest snapshot. ✅
+- Expose snapshot cadence/last-snapshot in runtime status. ✅
+
+### Phase 6B (planned)
+- Add snapshot schema/version integrity guards.
+- Add optional replay window from snapshot forward.
+- Expand ops metrics (`tick duration`, queue trends, idle NPC ratio over time).
 
 **Exit criteria:** restart resumes world safely within snapshot tolerance.
 
@@ -214,3 +215,5 @@ Phase 4 split details are tracked in `docs/phase4/PHASE4_SPLIT_PLAN.md`.
 
 
 Phase 5 split details are tracked in `docs/phase5/PHASE5_SPLIT_PLAN.md`.
+
+Phase 6 split details are tracked in `docs/phase6/PHASE6_SPLIT_PLAN.md`.

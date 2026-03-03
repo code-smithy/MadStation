@@ -15,6 +15,8 @@ class Settings:
     npc_speed_max_tiles_per_sec: int = 4
     oxygen_safe_min_percent: float = 15.0
     suffocation_damage_per_tick_at_zero_o2: float = 8.0
+    snapshot_cadence_ticks: int = 10
+    snapshot_file_path: str = ".madstation_snapshot.json"
 
 
 SETTINGS = Settings()

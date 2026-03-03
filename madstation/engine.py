@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 import hashlib
 import json
+from pathlib import Path
 import time
 from dataclasses import dataclass
 from typing import Protocol
@@ -53,7 +54,12 @@ class SocketLike(Protocol):
 
 
 class SimulationEngine:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        snapshot_path: str | None = None,
+        snapshot_cadence_ticks: int | None = None,
+        load_snapshot: bool = True,
+    ) -> None:
         width, height = 50, 50
         self.tick: int = 0
         self.server_sequence_id: int = 0
@@ -95,8 +101,16 @@ class SimulationEngine:
         self.last_action_at: dict[str, float] = {}
         self.command_ack_cache: dict[str, dict[str, CommandAck]] = {}
         self._running = False
-        self._recompute_compartments()
-        self._initialize_npcs()
+        self.snapshot_path = Path(snapshot_path or SETTINGS.snapshot_file_path)
+        cadence = snapshot_cadence_ticks if snapshot_cadence_ticks is not None else SETTINGS.snapshot_cadence_ticks
+        self.snapshot_cadence_ticks = max(1, int(cadence))
+        self.last_snapshot_tick: int = 0
+
+        restored = load_snapshot and self._load_snapshot_if_available()
+        self._ensure_world_defaults()
+        if not restored:
+            self._recompute_compartments()
+            self._initialize_npcs()
 
 
     @staticmethod
@@ -169,6 +183,8 @@ class SimulationEngine:
             "death_log_count": len(self.world_state.get("death_log", [])),
             "active_body_count": sum(1 for body in self.world_state.get("bodies", []) if not body.get("disposed", False)),
             "item_count": len(self.world_state.get("items", [])),
+            "last_snapshot_tick": self.last_snapshot_tick,
+            "snapshot_cadence_ticks": self.snapshot_cadence_ticks,
         }
 
     def stop(self) -> None:
@@ -260,7 +276,71 @@ class SimulationEngine:
             work_order_changes=command_work_order_changes + work_order_changes,
             death_log_appends=death_log_appends,
         )
+        self._maybe_persist_snapshot()
         await self._broadcast(delta.model_dump())
+
+    def _ensure_world_defaults(self) -> None:
+        self.world_state.setdefault("power", {"mode": "topology_aware_networks"})
+        self.world_state.setdefault("power_state", {})
+        self.world_state["power_state"].setdefault("generation", 0.0)
+        self.world_state["power_state"].setdefault("demand", 0.0)
+        self.world_state["power_state"].setdefault("battery_discharge", 0.0)
+        self.world_state["power_state"].setdefault("battery_charge", 0.0)
+        self.world_state["power_state"].setdefault("powered_consumers", [])
+        self.world_state["power_state"].setdefault("unpowered_consumers", [])
+        self.world_state["power_state"].setdefault("disabled_priorities", [])
+        self.world_state["power_state"].setdefault("networks", [])
+        self.world_state.setdefault("population", 0)
+        self.world_state.setdefault("npcs", [])
+        self.world_state.setdefault("work_orders", [])
+        self.world_state.setdefault("death_log", [])
+        self.world_state.setdefault("bodies", [])
+        self.world_state.setdefault("items", [])
+        self.world_state.setdefault("storages", [{"id": "storage-main", "location": {"x": 19, "y": 19}, "inventory": []}])
+        self.world_state.setdefault("door_states", {})
+        self.world_state.setdefault("machines", {})
+        self.world_state.setdefault("compartments", [])
+        self.world_state.setdefault("compartment_index", {})
+        if not self.world_state.get("npcs"):
+            self._initialize_npcs()
+
+    def _load_snapshot_if_available(self) -> bool:
+        if not self.snapshot_path.exists():
+            return False
+        try:
+            payload = json.loads(self.snapshot_path.read_text())
+        except Exception:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        state = payload.get("world_state")
+        if not isinstance(state, dict):
+            return False
+        self.tick = int(payload.get("tick", 0))
+        self.server_sequence_id = int(payload.get("server_sequence_id", 0))
+        self.world_state = state
+        self.last_snapshot_tick = self.tick
+        return True
+
+    def _snapshot_payload(self) -> dict:
+        return {
+            "tick": self.tick,
+            "server_sequence_id": self.server_sequence_id,
+            "world_state": self.world_state,
+            "saved_at_unix_ms": int(time.time() * 1000),
+        }
+
+    def _persist_snapshot(self) -> None:
+        self.snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.snapshot_path.with_suffix(self.snapshot_path.suffix + ".tmp")
+        temp_path.write_text(json.dumps(self._snapshot_payload(), sort_keys=True))
+        temp_path.replace(self.snapshot_path)
+        self.last_snapshot_tick = self.tick
+
+    def _maybe_persist_snapshot(self) -> None:
+        if self.tick % self.snapshot_cadence_ticks != 0:
+            return
+        self._persist_snapshot()
 
     async def _broadcast(self, payload: dict) -> None:
         for session_id in list(self.connections.keys()):
