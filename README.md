@@ -15,6 +15,8 @@
 - `docs/phase2/USER_SIDE_TESTING.md`
 - `docs/phase3/PHASE3_SPLIT_PLAN.md`
 - `docs/phase3/USER_SIDE_TESTING.md`
+- `docs/phase4/PHASE4_SPLIT_PLAN.md`
+- `docs/phase4/USER_SIDE_TESTING.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -151,3 +153,17 @@ Phase 3A is implemented and Phase 3B is in progress: topology-aware power-networ
 6. Observe websocket `delta_tick.entity_changes` for `power_event` entries (`brownout_started`, `blackout_started`, `power_recovered`).
 
 See `docs/phase3/USER_SIDE_TESTING.md` for the full step-by-step command checklist.
+
+
+## Phase 4 progress
+
+Phase 4 has commenced with deterministic NPC survival core mechanics: persistent 10-NPC roster, bounded speed attributes, diagonal survival movement, suffocation death handling, and automatic `DisposeBody` work-order creation. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
+
+## Phase 4 manual testing
+
+1. Open `/status` and verify `alive_npc_count`, `work_order_count`, and `death_log_count`.
+2. Open `/world` and inspect `world.npcs`, `world.work_orders`, `world.death_log`.
+3. Induce decompression in an occupied area and watch websocket deltas for `npc_survival_state` / `npc_death`.
+4. Confirm `DisposeBody` appears in `world.work_orders` and death records append in `world.death_log`.
+
+See `docs/phase4/USER_SIDE_TESTING.md` for full operator checklist.
