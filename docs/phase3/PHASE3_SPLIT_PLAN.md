@@ -20,7 +20,7 @@ Phase 3 is split into two slices to keep deterministic behavior stable while exp
 ## Phase 3B (in progress)
 
 - Add additional consumer classes and configurable tier policy from docs constants.
-- Add topology-aware power graph recalculation (currently global model).
+- Added topology-aware power-network segmentation by connected compartments with per-network allocation. ✅
 - Added richer failure events (brownout/blackout/recovery markers) in protocol `delta_tick.entity_changes`. ✅
 - Extend machine durability/power-fault interactions.
 
@@ -29,3 +29,4 @@ Phase 3 is split into two slices to keep deterministic behavior stable while exp
 - Deficits reliably shed lower tiers first.
 - Batteries bridge shortfalls and recharge on surplus.
 - Life support power dependencies are observable and test-covered.
+- Disconnected topology islands do not share generation/storage across networks.
