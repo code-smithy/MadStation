@@ -228,6 +228,24 @@ def test_create_work_order_payload_validation() -> None:
                 "metadata": {"item_id": "item-1", "destination": {"x": 3, "y": 3}},
             },
         )
+        invalid_feed_missing_generator = ClientCommand(
+            client_command_id="wo-6",
+            type=CommandType.CREATE_WORK_ORDER,
+            payload={
+                "work_type": "FeedOxygenGenerator",
+                "location": {"x": 2, "y": 2},
+                "metadata": {"item_id": "item-water-1"},
+            },
+        )
+        valid_feed = ClientCommand(
+            client_command_id="wo-7",
+            type=CommandType.CREATE_WORK_ORDER,
+            payload={
+                "work_type": "FeedOxygenGenerator",
+                "location": {"x": 2, "y": 2},
+                "metadata": {"item_id": "item-water-1", "generator_location": {"x": 4, "y": 4}},
+            },
+        )
 
         a1 = await engine.enqueue_command("anon-test", invalid_missing_work_type)
         engine.last_action_at.pop("anon-test", None)
@@ -238,12 +256,18 @@ def test_create_work_order_payload_validation() -> None:
         a4 = await engine.enqueue_command("anon-test", invalid_haul_missing_metadata)
         engine.last_action_at.pop("anon-test", None)
         a5 = await engine.enqueue_command("anon-test", valid_haul)
+        engine.last_action_at.pop("anon-test", None)
+        a6 = await engine.enqueue_command("anon-test", invalid_feed_missing_generator)
+        engine.last_action_at.pop("anon-test", None)
+        a7 = await engine.enqueue_command("anon-test", valid_feed)
 
         assert a1.result == CommandResult.INVALID_PAYLOAD
         assert a2.result == CommandResult.INVALID_PAYLOAD
         assert a3.result == CommandResult.QUEUED
         assert a4.result == CommandResult.INVALID_PAYLOAD
         assert a5.result == CommandResult.QUEUED
+        assert a6.result == CommandResult.INVALID_PAYLOAD
+        assert a7.result == CommandResult.QUEUED
 
     asyncio.run(run())
 
@@ -1444,6 +1468,9 @@ def test_phase5b_haul_water_creates_feed_order() -> None:
             "consumed": False,
         }
     ]
+    engine.world_state["machines"] = {
+        "20,20": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0}
+    }
     engine.world_state["work_orders"] = [
         {
             "id": "wo-haul-water",
@@ -1460,11 +1487,12 @@ def test_phase5b_haul_water_creates_feed_order() -> None:
     ]
 
     _, work_changes, _ = engine._update_npcs()
-    assert any(order.get("work_type") == "FeedOxygenGenerator" for order in engine.world_state["work_orders"])
+    feed_order = next(order for order in engine.world_state["work_orders"] if order.get("work_type") == "FeedOxygenGenerator")
+    assert isinstance(feed_order.get("generator_location"), dict)
     assert any(change.get("type") == "work_order_created_auto" for change in work_changes)
 
 
-def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> None:
+def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen_when_powered() -> None:
     engine = SimulationEngine()
     engine.world_state["npcs"] = [
         {
@@ -1481,6 +1509,8 @@ def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> Non
             "needs": {"hunger": 0.0, "fatigue": 0.0},
         }
     ]
+    engine.world_state["machines"]["20,20"] = {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 3.0, "consume_kw": 2.0}
+    engine.world_state["power_state"]["powered_consumers"] = ["20,20"]
     engine.world_state["items"] = [
         {
             "id": "item-water-2",
@@ -1497,6 +1527,7 @@ def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> Non
             "work_type": "FeedOxygenGenerator",
             "status": "Assigned",
             "location": {"x": 20, "y": 20},
+            "generator_location": {"x": 20, "y": 20},
             "item_id": "item-water-2",
             "created_tick": 1,
             "progress": 0,
@@ -1505,7 +1536,6 @@ def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> Non
         }
     ]
 
-    # ensure target tile has a compartment oxygen baseline
     comp_id = engine.world_state["compartment_index"].get("20,20")
     before_oxygen = None
     if comp_id is not None:
@@ -1522,7 +1552,63 @@ def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> Non
     assert any(change.get("type") == "work_order_completed" for change in work_changes)
     if comp_id is not None and before_oxygen is not None:
         after = next(comp for comp in engine.world_state["compartments"] if int(comp["id"]) == int(comp_id))["oxygen_percent"]
-        assert after > before_oxygen
+        assert after == 63.0
+
+
+def test_phase5b_feed_oxygen_generator_requeues_when_unpowered() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-feeder",
+            "name": "Feeder",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-feed-2",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["machines"]["20,20"] = {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0}
+    engine.world_state["power_state"]["powered_consumers"] = []
+    engine.world_state["items"] = [
+        {
+            "id": "item-water-3",
+            "item_type": "WaterUnit",
+            "location": {"x": 20, "y": 20},
+            "holder_npc_id": None,
+            "created_tick": 1,
+            "consumed": False,
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-feed-2",
+            "work_type": "FeedOxygenGenerator",
+            "status": "Assigned",
+            "location": {"x": 20, "y": 20},
+            "generator_location": {"x": 20, "y": 20},
+            "item_id": "item-water-3",
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 1,
+            "assignee_npc_id": "npc-feeder",
+        }
+    ]
+
+    _, work_changes, _ = engine._update_npcs()
+
+    order = engine.world_state["work_orders"][0]
+    assert order["status"] == "Queued"
+    assert engine.world_state["items"][0]["consumed"] is False
+    assert any(
+        change.get("type") == "work_order_unassigned"
+        and change.get("reason") == "generator_unpowered"
+        for change in work_changes
+    )
 
 
 def test_phase5b_competing_item_orders_requeue_loser() -> None:
@@ -1605,3 +1691,70 @@ def test_phase5b_competing_item_orders_requeue_loser() -> None:
         and c.get("reason") == "item_unavailable"
         for c in work_changes
     )
+
+
+def test_phase5_end_to_end_chain_mine_to_feed_completes_without_teleportation() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-chain",
+            "name": "ChainWorker",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-mine-chain",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["machines"] = {
+        "20,20": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0}
+    }
+    engine.world_state["power_state"]["powered_consumers"] = ["20,20"]
+    engine.world_state["storages"] = [{"id": "storage-main", "location": {"x": 20, "y": 20}, "inventory": []}]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-mine-chain",
+            "work_type": "MineIce",
+            "status": "Assigned",
+            "location": {"x": 20, "y": 20},
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-chain",
+            "item_type": "IceChunk",
+        }
+    ]
+
+    comp_id = engine.world_state["compartment_index"].get("20,20")
+    assert comp_id is not None
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == int(comp_id):
+            comp["oxygen_percent"] = 70.0
+            comp["pressure"] = 0.7
+            break
+
+    for _ in range(24):
+        engine._update_npcs()
+
+    mine = next(order for order in engine.world_state["work_orders"] if order["id"] == "wo-mine-chain")
+    refine_orders = [o for o in engine.world_state["work_orders"] if o.get("work_type") == "RefineIce"]
+    feed_orders = [o for o in engine.world_state["work_orders"] if o.get("work_type") == "FeedOxygenGenerator"]
+    assert mine["status"] == "Completed"
+    assert any(o.get("status") == "Completed" for o in refine_orders)
+    assert any(o.get("status") == "Completed" for o in feed_orders)
+
+    water_items = [i for i in engine.world_state["items"] if i.get("item_type") == "WaterUnit"]
+    assert water_items
+    assert all(i.get("consumed") is True for i in water_items)
+    # no item should have an impossible location outside world bounds
+    for item in engine.world_state["items"]:
+        loc = item.get("location", {})
+        assert 0 <= int(loc.get("x", -1)) < 50
+        assert 0 <= int(loc.get("y", -1)) < 50
+
+    after = next(comp for comp in engine.world_state["compartments"] if int(comp["id"]) == int(comp_id))["oxygen_percent"]
+    assert after > 70.0

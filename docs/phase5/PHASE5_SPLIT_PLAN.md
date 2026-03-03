@@ -26,3 +26,19 @@ Phase 5 is being split into foundational logistics first, then full life-support
 - Work orders drive physical item state transitions (no abstract pool).
 - Storage inventories reflect deterministic haul/placement outcomes.
 - Core life-support logistics chain can be executed end-to-end.
+
+
+## Phase 5C (started in this iteration)
+
+- Coupled `FeedOxygenGenerator` to actual generator tiles (machine presence + enabled state + powered consumer gate). ✅
+- Added generator-target metadata for feed orders and stricter command validation for feed generator location. ✅
+- Added deterministic requeue behavior when feed is blocked by generator state/power. ✅
+
+
+## Phase 5 completion check
+
+- Deterministic end-to-end chain test now verifies `MineIce` -> `HaulItem` -> `RefineIce` -> `HaulItem` -> `FeedOxygenGenerator` completion in one scenario. ✅
+- Feed execution is machine-coupled and power-gated, preventing abstract oxygen injection without a powered generator tile. ✅
+- Exit target is considered met for current Phase 5 scope. ✅
+
+See `docs/phase5/USER_SIDE_TESTING.md` for manual operator validation.

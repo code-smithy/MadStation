@@ -18,6 +18,7 @@
 - `docs/phase4/PHASE4_SPLIT_PLAN.md`
 - `docs/phase4/USER_SIDE_TESTING.md`
 - `docs/phase5/PHASE5_SPLIT_PLAN.md`
+- `docs/phase5/USER_SIDE_TESTING.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -174,4 +175,4 @@ See `docs/phase4/USER_SIDE_TESTING.md` for full operator checklist.
 
 ## Phase 5 progress
 
-Phase 5 is in progress with logistics + chain foundations now including 5B controls: stricter `CreateWorkOrder` schema validation for chain work types, deterministic item-chain stages (`RefineIce`/`FeedOxygenGenerator`), and collision/replan behavior when multiple NPCs target the same item/order chain. See `docs/phase5/PHASE5_SPLIT_PLAN.md`.
+Phase 5 scope is now completed for the current roadmap slice: logistics/work-order chain behavior is validated end-to-end (`MineIce` -> `HaulItem` -> `RefineIce` -> `HaulItem` -> `FeedOxygenGenerator`) with deterministic command validation, collision handling, and machine-coupled powered feed execution. See `docs/phase5/PHASE5_SPLIT_PLAN.md` and `docs/phase5/USER_SIDE_TESTING.md`.

@@ -107,7 +107,7 @@
 
 **Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp. ✅ Met.
 
-## Phase 5 — Work Orders + Physical Logistics Loop (Days 16–21) 🚧 In Progress
+## Phase 5 — Work Orders + Physical Logistics Loop (Days 16–21) ✅ Completed
 
 ### Phase 5A (started in current iteration)
 - Added command-applied work-order creation path into authoritative world state. ✅
@@ -119,7 +119,12 @@
 - Added initial refinement/feed chain baseline (`RefineIce` + `FeedOxygenGenerator`) with physical item handoff/consumption. ✅
 - Added race collision/replan handling for shared logistics orders with deterministic loser requeue/cancel outcomes. ✅
 
-**Exit criteria:** full life-support chain works end-to-end without teleportation.
+**Exit criteria:** full life-support chain works end-to-end without teleportation. ✅ Met.
+
+### Phase 5C (started in this iteration)
+- Coupled `FeedOxygenGenerator` execution to oxygen generator machine/power state. ✅
+- Added feed-generator command metadata validation (`generator_location`) and order targeting. ✅
+- Added deterministic requeue for blocked feed tasks (`generator_missing_or_disabled`, `generator_unpowered`). ✅
 
 ## Phase 6 — Persistence + Recovery + Basic Ops (Days 22–25)
 
