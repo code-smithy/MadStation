@@ -15,6 +15,8 @@
 - `docs/phase2/USER_SIDE_TESTING.md`
 - `docs/phase3/PHASE3_SPLIT_PLAN.md`
 - `docs/phase3/USER_SIDE_TESTING.md`
+- `docs/phase4/PHASE4_SPLIT_PLAN.md`
+- `docs/phase4/USER_SIDE_TESTING.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -108,7 +110,7 @@ make test
 
 ## Phase 2 progress
 
-Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffusion + oxygen-generator hooks are now implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md` for current scope.
+Phase 2 is complete: structural edits, deterministic door auto-state, compartment recomputation, diffusion/leaks, and oxygen generation hooks are implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md`.
 
 
 ## User-side testing (manual)
@@ -138,16 +140,30 @@ See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.
 
 ## Phase 3 progress
 
-Phase 3A is implemented and Phase 3B is in progress: global power + load-shedding + oxygen-generator power gating are live, and `power_event` markers now appear in `delta_tick.entity_changes`. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.
+Phase 3A is implemented and Phase 3B is in progress: topology-aware power-network segmentation, global observability rollups, load-shedding, oxygen-generator power gating, and `power_event` markers in `delta_tick.entity_changes` are live. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.
 
 
 ## Phase 3 manual testing
 
 1. Connect websocket: `wscat -c ws://127.0.0.1:8000/ws`.
 2. Build a powered consumer (`OxygenGenerator`) and a lower-priority consumer (`Light`).
-3. Build limited generation (`SolarPanel`) and verify `unpowered_consumers`/`disabled_priorities` in `/world.world.power_state`.
+3. Build limited generation (`SolarPanel`) and verify `unpowered_consumers`/`disabled_priorities` in `/world.world.power_state` and inspect per-network entries in `power_state.networks`.
 4. Add `Battery` and verify `battery_discharge > 0` and battery `stored` decreases when bridging deficit.
 5. Add `Reactor` and verify consumers recover and oxygen generation resumes.
 6. Observe websocket `delta_tick.entity_changes` for `power_event` entries (`brownout_started`, `blackout_started`, `power_recovered`).
 
 See `docs/phase3/USER_SIDE_TESTING.md` for the full step-by-step command checklist.
+
+
+## Phase 4 progress
+
+Phase 4 core is complete for MVP scope: deterministic NPC roster/movement, survival-first needs/personality behavior, suffocation death handling, `DisposeBody` work-order lifecycle with task-aware nearest-reachable path assignment, and deterministic body metadata/disposal state tracking. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
+
+## Phase 4 manual testing
+
+1. Open `/status` and verify `alive_npc_count`, `work_order_count`, and `death_log_count`.
+2. Open `/world` and inspect `world.npcs`, `world.work_orders`, `world.death_log`.
+3. Induce decompression in an occupied area and watch websocket deltas for `npc_survival_state` / `npc_death`.
+4. Confirm `DisposeBody` appears in `world.work_orders` and death records append in `world.death_log`.
+
+See `docs/phase4/USER_SIDE_TESTING.md` for full operator checklist.

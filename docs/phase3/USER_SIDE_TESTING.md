@@ -1,6 +1,6 @@
 # Phase 3 User-Side Testing Guide
 
-Use this checklist to validate Phase 3A power behavior from an operator perspective.
+Use this checklist to validate Phase 3A + current Phase 3B power behavior from an operator perspective.
 
 ## Prerequisites
 
@@ -16,6 +16,7 @@ Use this checklist to validate Phase 3A power behavior from an operator perspect
    - `unpowered_consumer_count`
 2. `GET /world` should include:
    - `world.power_state`
+   - `world.power_state.networks`
    - `world.machines`
 
 ## 2) Build machines via websocket
@@ -86,3 +87,13 @@ Watch websocket `delta_tick` messages:
 - `command_count` increments on applied command ticks.
 - `tile_changes` include structural changes.
 - `entity_changes` include compartment updates when oxygen/pressure changes.
+
+
+## 7) Validate topology-aware networks
+
+Create two disconnected sealed rooms and place generation in one, consumer in the other.
+
+Expected:
+- Consumer in the non-powered room remains in `unpowered_consumers`.
+- `world.power_state.networks` shows separate `network_id` entries with independent generation/demand.
+- No cross-network battery discharge/charge effects.
