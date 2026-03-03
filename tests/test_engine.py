@@ -1884,3 +1884,27 @@ def test_phase6_restore_rejects_unsupported_snapshot_schema(tmp_path) -> None:
     assert engine.tick == 0
     assert engine.server_sequence_id == 0
     assert len(engine.world_state.get("npcs", [])) == 10
+
+
+def test_phase6c_runtime_status_exposes_tick_and_queue_ops_metrics() -> None:
+    async def run() -> None:
+        engine = SimulationEngine(load_snapshot=False)
+
+        # queue two commands to establish a queue peak before tick execution
+        await engine.enqueue_command("s1", build_command("m1", 3, 3))
+        engine.last_action_at.pop("s1", None)
+        await engine.enqueue_command("s1", build_command("m2", 4, 4))
+
+        status_before = engine.runtime_status()
+        assert status_before["command_queue_peak"] >= 2
+        assert status_before["tick_duration_ms_last"] == 0.0
+
+        await engine._execute_tick()
+
+        status_after = engine.runtime_status()
+        assert status_after["tick_duration_ms_last"] > 0.0
+        assert status_after["tick_duration_ms_ema"] > 0.0
+        assert status_after["tick_duration_ms_max"] >= status_after["tick_duration_ms_last"]
+        assert status_after["command_queue_peak"] >= 2
+
+    asyncio.run(run())

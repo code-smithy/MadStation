@@ -105,6 +105,10 @@ class SimulationEngine:
         cadence = snapshot_cadence_ticks if snapshot_cadence_ticks is not None else SETTINGS.snapshot_cadence_ticks
         self.snapshot_cadence_ticks = max(1, int(cadence))
         self.last_snapshot_tick: int = 0
+        self.tick_duration_ms_last: float = 0.0
+        self.tick_duration_ms_ema: float = 0.0
+        self.tick_duration_ms_max: float = 0.0
+        self.command_queue_peak: int = 0
 
         restored = load_snapshot and self._load_snapshot_if_available()
         self._ensure_world_defaults()
@@ -156,6 +160,7 @@ class SimulationEngine:
             return ack
 
         await self.command_queue.put(PendingCommand(session_id=session_id, command=command, enqueued_at_tick=self.tick))
+        self.command_queue_peak = max(self.command_queue_peak, self.command_queue.qsize())
         self.last_action_at[session_id] = time.monotonic()
         ack = CommandAck(client_command_id=command.client_command_id, result=CommandResult.QUEUED, tick=self.tick)
         self.command_ack_cache[session_id][command.client_command_id] = ack
@@ -186,6 +191,10 @@ class SimulationEngine:
             "last_snapshot_tick": self.last_snapshot_tick,
             "snapshot_cadence_ticks": self.snapshot_cadence_ticks,
             "snapshot_schema_version": SETTINGS.snapshot_schema_version,
+            "tick_duration_ms_last": round(self.tick_duration_ms_last, 3),
+            "tick_duration_ms_ema": round(self.tick_duration_ms_ema, 3),
+            "tick_duration_ms_max": round(self.tick_duration_ms_max, 3),
+            "command_queue_peak": self.command_queue_peak,
         }
 
     def stop(self) -> None:
@@ -204,6 +213,7 @@ class SimulationEngine:
             await asyncio.sleep(max(0.0, tick_interval - elapsed))
 
     async def _execute_tick(self) -> None:
+        tick_started_at = time.monotonic()
         self.tick += 1
         drained: list[PendingCommand] = []
         while not self.command_queue.empty():
@@ -278,6 +288,13 @@ class SimulationEngine:
             death_log_appends=death_log_appends,
         )
         self._maybe_persist_snapshot()
+        elapsed_ms = (time.monotonic() - tick_started_at) * 1000.0
+        self.tick_duration_ms_last = elapsed_ms
+        if self.tick <= 1:
+            self.tick_duration_ms_ema = elapsed_ms
+        else:
+            self.tick_duration_ms_ema = (0.8 * self.tick_duration_ms_ema) + (0.2 * elapsed_ms)
+        self.tick_duration_ms_max = max(self.tick_duration_ms_max, elapsed_ms)
         await self._broadcast(delta.model_dump())
 
     def _ensure_world_defaults(self) -> None:

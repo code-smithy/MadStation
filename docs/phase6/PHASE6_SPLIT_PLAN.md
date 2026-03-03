@@ -20,3 +20,9 @@ Phase 6 is split into persistence/recovery foundations first, then broader ops o
 
 - Restart resumes world state safely from latest snapshot within configured cadence tolerance.
 - Snapshot cadence/restore behavior is deterministic and test-covered.
+
+
+## Phase 6C (started in this iteration)
+
+- Added basic ops metrics in runtime status: `tick_duration_ms_last`, `tick_duration_ms_ema`, `tick_duration_ms_max`, and `command_queue_peak`. ✅
+- Added deterministic test coverage for queue-peak and tick-duration metric updates. ✅

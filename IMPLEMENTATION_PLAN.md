@@ -141,6 +141,10 @@
 - Add optional replay window from snapshot forward.
 - Expand ops metrics (`tick duration`, queue trends, idle NPC ratio over time).
 
+### Phase 6C (started in this iteration)
+- Added basic ops runtime metrics (`tick_duration_ms_last`, `tick_duration_ms_ema`, `tick_duration_ms_max`, `command_queue_peak`). ✅
+- Added deterministic test coverage for ops metric updates. ✅
+
 **Exit criteria:** restart resumes world safely within snapshot tolerance.
 
 ## Phase 7 — Frontend MVP (parallel, correctness-first)

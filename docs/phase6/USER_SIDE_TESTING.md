@@ -32,3 +32,14 @@ Use this checklist to validate persistence/recovery behavior.
 2. Restart server.
 3. Confirm server starts safely using default bootstrap state instead of crashing on invalid snapshot.
 4. Confirm `/status.tick` resets and world remains valid/interactive.
+
+
+## 5) Basic ops metrics checks
+
+1. Observe `/status` fields for tick runtime and queue behavior:
+   - `tick_duration_ms_last`
+   - `tick_duration_ms_ema`
+   - `tick_duration_ms_max`
+   - `command_queue_peak`
+2. Burst-enqueue several commands quickly and confirm `command_queue_peak` increases.
+3. Let simulation run for multiple ticks and confirm duration fields remain populated and stable.
