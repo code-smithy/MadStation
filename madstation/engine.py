@@ -21,6 +21,7 @@ TILE_WINDOW = "Window"
 ALL_TILE_TYPES = {TILE_VACUUM, TILE_FLOOR, TILE_WALL, TILE_DOOR, TILE_AIRLOCK, TILE_WINDOW}
 WALKABLE_TILES = {TILE_FLOOR, TILE_DOOR, TILE_AIRLOCK}
 COMPARTMENT_FILL_TILES = {TILE_FLOOR, TILE_AIRLOCK}
+MACHINE_OXYGEN_GENERATOR = "OxygenGenerator"
 
 
 @dataclass
@@ -46,6 +47,7 @@ class SimulationEngine:
             "population": 0,
             "grid": [[TILE_FLOOR for _ in range(width)] for _ in range(height)],
             "door_states": {},
+            "machines": {},
             "compartments": [],
             "compartment_index": {},
         }
@@ -121,6 +123,7 @@ class SimulationEngine:
             "queued_commands": self.command_queue.qsize(),
             "compartment_count": len(self.world_state["compartments"]),
             "open_door_count": open_door_count,
+            "machine_count": len(self.world_state["machines"]),
         }
 
     def stop(self) -> None:
@@ -235,8 +238,18 @@ class SimulationEngine:
                 return False
             if command.type is CommandType.BUILD and "tile_type" in payload:
                 tile_type = payload.get("tile_type")
-                return isinstance(tile_type, str) and tile_type in (ALL_TILE_TYPES - {TILE_VACUUM})
-            return True
+                if not (isinstance(tile_type, str) and tile_type in (ALL_TILE_TYPES - {TILE_VACUUM})):
+                    return False
+            machine = payload.get("machine")
+            if machine is None:
+                return True
+            if not isinstance(machine, dict):
+                return False
+            machine_type = machine.get("type")
+            if machine_type != MACHINE_OXYGEN_GENERATOR:
+                return False
+            rate = machine.get("rate_per_tick", 2.0)
+            return isinstance(rate, (int, float)) and 0 < float(rate) <= 25.0
 
         if command.type is CommandType.CREATE_WORK_ORDER:
             work_type = payload.get("work_type")
@@ -275,16 +288,34 @@ class SimulationEngine:
         else:
             after = TILE_VACUUM
 
-        if before == after:
+        changed_tile = before != after
+        if changed_tile:
+            self.world_state["grid"][y][x] = after
+            if after == TILE_DOOR:
+                self.world_state["door_states"][key] = {"open": False}
+            elif key in self.world_state["door_states"]:
+                self.world_state["door_states"].pop(key, None)
+
+        machine_payload = command.payload.get("machine") if command.type is CommandType.BUILD else None
+        machine_changed = False
+        if isinstance(machine_payload, dict) and machine_payload.get("type") == MACHINE_OXYGEN_GENERATOR:
+            self.world_state["machines"][key] = {
+                "type": MACHINE_OXYGEN_GENERATOR,
+                "enabled": True,
+                "rate_per_tick": float(machine_payload.get("rate_per_tick", 2.0)),
+            }
+            machine_changed = True
+        elif key in self.world_state["machines"] and (command.type is CommandType.DECONSTRUCT or changed_tile):
+            self.world_state["machines"].pop(key, None)
+            machine_changed = True
+
+        if not changed_tile and not machine_changed:
             return None, False
 
-        self.world_state["grid"][y][x] = after
-        if after == TILE_DOOR:
-            self.world_state["door_states"][key] = {"open": False}
-        elif key in self.world_state["door_states"]:
-            self.world_state["door_states"].pop(key, None)
+        if changed_tile:
+            return {"x": x, "y": y, "before": before, "after": after}, True
 
-        return {"x": x, "y": y, "before": before, "after": after}, True
+        return {"x": x, "y": y, "type": "machine_change", "machine_key": key}, True
 
     def _auto_update_doors(self) -> list[dict]:
         width = self.world_state["world"]["width"]
@@ -408,6 +439,18 @@ class SimulationEngine:
             for nx, ny in self._neighbors4(x, y, width, height):
                 if grid[ny][nx] == TILE_VACUUM:
                     leak_counts[int(comp_id)] += 1
+
+        # oxygen generation machine hooks
+        for key, machine in self.world_state["machines"].items():
+            if not isinstance(machine, dict):
+                continue
+            if machine.get("type") != MACHINE_OXYGEN_GENERATOR or not machine.get("enabled", True):
+                continue
+            comp_id = index.get(key)
+            if comp_id is None:
+                continue
+            rate = float(machine.get("rate_per_tick", 2.0))
+            oxygen_delta[int(comp_id)] += rate
 
         # door-driven diffusion/leak
         for key, state in self.world_state["door_states"].items():

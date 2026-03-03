@@ -11,6 +11,7 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         status_payload = await status()
         assert 'tick' in status_payload
         assert 'compartment_count' in status_payload
+        assert 'machine_count' in status_payload
 
         world_payload = await world()
         assert 'tick' in world_payload

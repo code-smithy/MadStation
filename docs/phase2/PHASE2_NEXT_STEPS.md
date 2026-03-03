@@ -4,18 +4,15 @@
 
 - Deterministic door state model with auto-open/auto-close baseline behavior.
 - Diffusion between compartments through open-door boundaries.
+- Oxygen generation hooks at compartment level via `OxygenGenerator` machine integration.
 - Added tests for closed-door split behavior, open-door diffusion, and door auto-state transitions.
 
 ## Remaining 2B/Phase-3-facing Tasks
 
-1. **Environment hooks for life support machines**
-   - Define oxygen generation injection points at compartment level.
-   - Keep implementation deterministic and tick-order-stable.
-
-2. **Topology/compartment invariants**
+1. **Topology/compartment invariants**
    - Add tests for split/merge transitions and oxygen conservation constraints.
 
-3. **Protocol and UI-support data**
+2. **Protocol and UI-support data**
    - Include optional compartment-change summaries in deltas for easier client rendering/debug.
 
 ## Suggested test additions

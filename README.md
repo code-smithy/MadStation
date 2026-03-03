@@ -106,7 +106,7 @@ make test
 
 ## Phase 2 progress
 
-Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffusion are now implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md` for current scope.
+Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffusion + oxygen-generator hooks are now implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md` for current scope.
 
 
 ## User-side testing (manual)
@@ -127,6 +127,7 @@ Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffus
 ```
 
 6. Build a door between two floor tiles and watch `delta_tick.tile_changes` for `door_state` transitions.
-7. Refresh `/world` to confirm tile mutations + compartment oxygen drift/diffusion.
+7. Optionally build a floor with a machine hook using payload `{"machine":{"type":"OxygenGenerator","rate_per_tick":3}}`.
+8. Refresh `/world` to confirm tile mutations + compartment oxygen drift/diffusion/generation.
 
 See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.

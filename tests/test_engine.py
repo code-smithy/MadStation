@@ -367,3 +367,82 @@ def test_delta_includes_compartment_changes_after_breach() -> None:
         assert any(change.get("type") == "compartment_change" for change in entity_changes)
 
     asyncio.run(run())
+
+
+
+def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+
+        # set deterministic closed room with one floor tile compartment
+        for y in range(50):
+            for x in range(50):
+                engine.world_state["grid"][y][x] = "Wall"
+        engine.world_state["grid"][10][10] = "Floor"
+        engine._recompute_compartments()
+
+        only_compartment = engine.world_state["compartments"][0]
+        only_compartment["oxygen_percent"] = 20.0
+
+        engine.world_state["machines"]["10,10"] = {
+            "type": "OxygenGenerator",
+            "enabled": True,
+            "rate_per_tick": 5.0,
+        }
+
+        engine._update_oxygen()
+        assert engine.world_state["compartments"][0]["oxygen_percent"] > 20.0
+
+    asyncio.run(run())
+
+
+def test_build_with_machine_registers_and_deconstruct_removes_machine() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session_id = await engine.connect(ws)
+
+        build_with_machine = ClientCommand(
+            client_command_id="m1",
+            type=CommandType.BUILD,
+            payload={
+                "x": 4,
+                "y": 4,
+                "tile_type": "Floor",
+                "machine": {"type": "OxygenGenerator", "rate_per_tick": 3.0},
+            },
+        )
+        ack = await engine.enqueue_command(session_id, build_with_machine)
+        assert ack.result == CommandResult.QUEUED
+        await engine._execute_tick()
+
+        assert "4,4" in engine.world_state["machines"]
+        assert engine.world_state["machines"]["4,4"]["type"] == "OxygenGenerator"
+
+        engine.last_action_at.pop(session_id, None)
+        decon = ClientCommand(client_command_id="m2", type=CommandType.DECONSTRUCT, payload={"x": 4, "y": 4})
+        await engine.enqueue_command(session_id, decon)
+        await engine._execute_tick()
+
+        assert "4,4" not in engine.world_state["machines"]
+
+    asyncio.run(run())
+
+
+def test_build_rejects_invalid_machine_payload() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        invalid_machine = ClientCommand(
+            client_command_id="bad-machine",
+            type=CommandType.BUILD,
+            payload={
+                "x": 1,
+                "y": 1,
+                "tile_type": "Floor",
+                "machine": {"type": "UnknownMachine", "rate_per_tick": 5},
+            },
+        )
+        ack = await engine.enqueue_command("anon-test", invalid_machine)
+        assert ack.result == CommandResult.INVALID_PAYLOAD
+
+    asyncio.run(run())

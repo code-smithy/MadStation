@@ -70,9 +70,9 @@
 ### Phase 2B (in progress)
 - Implemented diffusion behavior via explicit open-door boundaries. ✅
 - Implemented deterministic door auto-open/close baseline logic. ✅
-- Add oxygen generation hooks for machine integration. (pending)
+- Implemented oxygen generation hooks for machine integration. ✅
 
-**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; finalize after oxygen generation hooks.)
+**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; Phase 2 closure candidate; remaining work is mostly invariants/protocol polish.)
 
 ## Phase 3 — Power + Priority Load Shedding (Days 8–10)
 

@@ -70,7 +70,7 @@ Expected second ack: `THROTTLED`.
 ## Known current scope (Phase 2A + partial 2B)
 
 - Compartments and oxygen leak are implemented.
-- Door auto-open/close and door diffusion are implemented; oxygen generation hooks remain pending.
+- Door auto-open/close, door diffusion, and oxygen generation hooks are implemented.
 
 
 ## 7) Door auto-state + diffusion check
@@ -79,3 +79,16 @@ Expected second ack: `THROTTLED`.
 2. Confirm door state appears in `/world.world.door_states`.
 3. Observe `door_state` entries inside `delta_tick.tile_changes` when the door auto-opens/closes.
 4. With differing oxygen values between pockets, keep door open and confirm values trend toward each other over ticks.
+
+
+## 8) Oxygen generator hook check
+
+Send a build command with machine payload:
+
+```json
+{"client_command_id":"gen-1","type":"Build","payload":{"x":12,"y":12,"tile_type":"Floor","machine":{"type":"OxygenGenerator","rate_per_tick":3}}}
+```
+
+Then verify in `/world`:
+- `world.machines["12,12"]` exists with `type: "OxygenGenerator"`,
+- compartment oxygen around that tile trends upward over ticks (bounded at 100).
