@@ -199,23 +199,51 @@ def test_create_work_order_payload_validation() -> None:
     async def run() -> None:
         engine = SimulationEngine()
 
-        invalid = ClientCommand(
+        invalid_missing_work_type = ClientCommand(
             client_command_id="wo-1",
             type=CommandType.CREATE_WORK_ORDER,
             payload={"location": {"x": 2, "y": 2}},
         )
-        valid = ClientCommand(
+        invalid_unknown_work_type = ClientCommand(
             client_command_id="wo-2",
             type=CommandType.CREATE_WORK_ORDER,
             payload={"work_type": "Mine", "location": {"x": 2, "y": 2}},
         )
+        valid_mine = ClientCommand(
+            client_command_id="wo-3",
+            type=CommandType.CREATE_WORK_ORDER,
+            payload={"work_type": "MineIce", "location": {"x": 2, "y": 2}, "metadata": {"item_type": "IceChunk"}},
+        )
+        invalid_haul_missing_metadata = ClientCommand(
+            client_command_id="wo-4",
+            type=CommandType.CREATE_WORK_ORDER,
+            payload={"work_type": "HaulItem", "location": {"x": 2, "y": 2}},
+        )
+        valid_haul = ClientCommand(
+            client_command_id="wo-5",
+            type=CommandType.CREATE_WORK_ORDER,
+            payload={
+                "work_type": "HaulItem",
+                "location": {"x": 2, "y": 2},
+                "metadata": {"item_id": "item-1", "destination": {"x": 3, "y": 3}},
+            },
+        )
 
-        invalid_ack = await engine.enqueue_command("anon-test", invalid)
+        a1 = await engine.enqueue_command("anon-test", invalid_missing_work_type)
         engine.last_action_at.pop("anon-test", None)
-        valid_ack = await engine.enqueue_command("anon-test", valid)
+        a2 = await engine.enqueue_command("anon-test", invalid_unknown_work_type)
+        engine.last_action_at.pop("anon-test", None)
+        a3 = await engine.enqueue_command("anon-test", valid_mine)
+        engine.last_action_at.pop("anon-test", None)
+        a4 = await engine.enqueue_command("anon-test", invalid_haul_missing_metadata)
+        engine.last_action_at.pop("anon-test", None)
+        a5 = await engine.enqueue_command("anon-test", valid_haul)
 
-        assert invalid_ack.result == CommandResult.INVALID_PAYLOAD
-        assert valid_ack.result == CommandResult.QUEUED
+        assert a1.result == CommandResult.INVALID_PAYLOAD
+        assert a2.result == CommandResult.INVALID_PAYLOAD
+        assert a3.result == CommandResult.QUEUED
+        assert a4.result == CommandResult.INVALID_PAYLOAD
+        assert a5.result == CommandResult.QUEUED
 
     asyncio.run(run())
 
@@ -1495,3 +1523,85 @@ def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> Non
     if comp_id is not None and before_oxygen is not None:
         after = next(comp for comp in engine.world_state["compartments"] if int(comp["id"]) == int(comp_id))["oxygen_percent"]
         assert after > before_oxygen
+
+
+def test_phase5b_competing_item_orders_requeue_loser() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-1",
+            "name": "N1",
+            "x": 19,
+            "y": 19,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-haul-a",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        },
+        {
+            "id": "npc-2",
+            "name": "N2",
+            "x": 19,
+            "y": 19,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-haul-b",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        },
+    ]
+    engine.world_state["items"] = [
+        {
+            "id": "item-shared",
+            "item_type": "IceChunk",
+            "location": {"x": 19, "y": 19},
+            "holder_npc_id": None,
+            "created_tick": 1,
+            "consumed": False,
+        }
+    ]
+    engine.world_state["storages"] = [{"id": "storage-main", "location": {"x": 19, "y": 19}, "inventory": []}]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-haul-a",
+            "work_type": "HaulItem",
+            "status": "Assigned",
+            "location": {"x": 19, "y": 19},
+            "destination": {"x": 19, "y": 19},
+            "item_id": "item-shared",
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-1",
+        },
+        {
+            "id": "wo-haul-b",
+            "work_type": "HaulItem",
+            "status": "Assigned",
+            "location": {"x": 19, "y": 19},
+            "destination": {"x": 19, "y": 19},
+            "item_id": "item-shared",
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-2",
+        },
+    ]
+
+    _, work_changes, _ = engine._update_npcs()
+
+    first = next(order for order in engine.world_state["work_orders"] if order["id"] == "wo-haul-a")
+    second = next(order for order in engine.world_state["work_orders"] if order["id"] == "wo-haul-b")
+    assert first["status"] == "Completed"
+    assert second["status"] == "Cancelled"
+    assert any(
+        c.get("type") == "work_order_cancelled"
+        and c.get("work_order_id") == "wo-haul-b"
+        and c.get("reason") == "item_unavailable"
+        for c in work_changes
+    )

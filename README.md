@@ -174,4 +174,4 @@ See `docs/phase4/USER_SIDE_TESTING.md` for full operator checklist.
 
 ## Phase 5 progress
 
-Phase 5 is in progress with logistics + chain foundations: command-applied work-order creation, physical item/storage scaffolding, `MineIce` -> `HaulItem` storage flow, and initial `RefineIce`/`FeedOxygenGenerator` item transformation + consumption semantics. See `docs/phase5/PHASE5_SPLIT_PLAN.md`.
+Phase 5 is in progress with logistics + chain foundations now including 5B controls: stricter `CreateWorkOrder` schema validation for chain work types, deterministic item-chain stages (`RefineIce`/`FeedOxygenGenerator`), and collision/replan behavior when multiple NPCs target the same item/order chain. See `docs/phase5/PHASE5_SPLIT_PLAN.md`.

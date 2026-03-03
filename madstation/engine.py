@@ -36,6 +36,8 @@ MACHINE_HEATER = "Heater"
 MACHINE_LIGHT = "Light"
 
 POWER_PRIORITY = dict(SETTINGS.power_priority_tiers)
+SUPPORTED_COMMAND_WORK_TYPES = {"MineIce", "HaulItem", "RefineIce", "FeedOxygenGenerator"}
+WORK_TYPES_WITH_ITEM = {"HaulItem", "RefineIce", "FeedOxygenGenerator"}
 
 
 @dataclass
@@ -300,13 +302,40 @@ class SimulationEngine:
             return self._validate_machine_payload(machine)
 
         if command.type is CommandType.CREATE_WORK_ORDER:
-            work_type = payload.get("work_type")
-            location = payload.get("location")
-            if not isinstance(work_type, str) or not work_type:
+            return self._validate_work_order_payload(payload)
+
+        return False
+
+    def _validate_work_order_payload(self, payload: dict) -> bool:
+        work_type = payload.get("work_type")
+        location = payload.get("location")
+        if not isinstance(work_type, str) or work_type not in SUPPORTED_COMMAND_WORK_TYPES:
+            return False
+        if not isinstance(location, dict) or not self._validate_xy(location.get("x"), location.get("y")):
+            return False
+
+        metadata = payload.get("metadata")
+        if metadata is None:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            return False
+
+        if work_type == "MineIce":
+            item_type = metadata.get("item_type", "IceChunk")
+            return isinstance(item_type, str) and item_type == "IceChunk"
+
+        if work_type == "HaulItem":
+            item_id = metadata.get("item_id")
+            destination = metadata.get("destination")
+            if not isinstance(item_id, str) or not item_id:
                 return False
-            if not isinstance(location, dict):
+            if not isinstance(destination, dict):
                 return False
-            return self._validate_xy(location.get("x"), location.get("y"))
+            return self._validate_xy(destination.get("x"), destination.get("y"))
+
+        if work_type in {"RefineIce", "FeedOxygenGenerator"}:
+            item_id = metadata.get("item_id")
+            return isinstance(item_id, str) and bool(item_id)
 
         return False
 
@@ -388,25 +417,28 @@ class SimulationEngine:
     def _apply_create_work_order(self, command: ClientCommand, sequence_id: int) -> dict:
         payload = command.payload
         location = payload.get("location", {})
+        work_type = str(payload.get("work_type"))
         order = {
             "id": f"wo-cmd-{sequence_id}",
-            "work_type": str(payload.get("work_type")),
+            "work_type": work_type,
             "status": "Queued",
             "location": {"x": int(location["x"]), "y": int(location["y"])},
             "created_tick": self.tick,
             "progress": 0,
-            "required_progress": 2,
+            "required_progress": 1 if work_type == "FeedOxygenGenerator" else 2,
         }
         metadata = payload.get("metadata")
-        if isinstance(metadata, dict):
-            # narrow accepted deterministic metadata fields only
-            if isinstance(metadata.get("item_type"), str):
-                order["item_type"] = metadata["item_type"]
-            destination = metadata.get("destination")
-            if isinstance(destination, dict) and self._validate_xy(destination.get("x"), destination.get("y")):
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        if work_type == "MineIce":
+            order["item_type"] = str(metadata.get("item_type", "IceChunk"))
+        elif work_type in WORK_TYPES_WITH_ITEM:
+            order["item_id"] = str(metadata.get("item_id"))
+            if work_type == "HaulItem":
+                destination = metadata.get("destination", {})
                 order["destination"] = {"x": int(destination["x"]), "y": int(destination["y"])}
-            if isinstance(metadata.get("item_id"), str):
-                order["item_id"] = metadata["item_id"]
+
         self.world_state.setdefault("work_orders", []).append(order)
         return order
 
@@ -953,8 +985,39 @@ class SimulationEngine:
                 continue
 
             if active_order is not None:
-                if self._npc_at_active_order_target(npc, active_order):
-                    self._process_active_work_order(npc, active_order, oxygen, npc_changes, work_order_changes)
+                item_conflict = self._active_order_item_conflict_reason(active_order, npc)
+                if item_conflict == "item_unavailable":
+                    active_order["status"] = "Cancelled"
+                    active_order["cancelled_tick"] = self.tick
+                    active_order["cancel_reason"] = item_conflict
+                    active_order.pop("assignee_npc_id", None)
+                    active_order.pop("assigned_tick", None)
+                    npc["current_work_order_id"] = None
+                    work_order_changes.append(
+                        {
+                            "type": "work_order_cancelled",
+                            "work_order_id": active_order["id"],
+                            "reason": item_conflict,
+                        }
+                    )
+                    active_order = None
+                elif item_conflict == "claimed_by_other_order":
+                    active_order["status"] = "Queued"
+                    active_order["progress"] = 0
+                    active_order.pop("assignee_npc_id", None)
+                    active_order.pop("assigned_tick", None)
+                    npc["current_work_order_id"] = None
+                    work_order_changes.append(
+                        {
+                            "type": "work_order_unassigned",
+                            "work_order_id": active_order["id"],
+                            "reason": item_conflict,
+                        }
+                    )
+                    active_order = None
+
+            if active_order is not None and self._npc_at_active_order_target(npc, active_order):
+                self._process_active_work_order(npc, active_order, oxygen, npc_changes, work_order_changes)
 
         self.world_state["population"] = sum(1 for npc in self.world_state.get("npcs", []) if npc.get("alive", True))
         return npc_changes, work_order_changes, death_log_appends
@@ -1218,12 +1281,14 @@ class SimulationEngine:
         for order in self.world_state.get("work_orders", []):
             if order.get("status") != "Queued":
                 continue
-            if order.get("work_type") not in {"DisposeBody", "MineIce", "HaulItem", "RefineIce", "FeedOxygenGenerator"}:
+            if order.get("work_type") not in ({"DisposeBody"} | SUPPORTED_COMMAND_WORK_TYPES):
                 continue
             location = order.get("location", {})
             tx = location.get("x")
             ty = location.get("y")
             if not isinstance(tx, int) or not isinstance(ty, int):
+                continue
+            if self._work_order_item_claimed(order):
                 continue
             distance = self._path_distance(sx, sy, tx, ty, grid, width, height)
             if distance is None:
@@ -1243,6 +1308,52 @@ class SimulationEngine:
         chosen["path_distance_assigned"] = ranked[0][0]
         npc["current_work_order_id"] = chosen["id"]
         return chosen
+
+    def _work_order_item_claimed(self, order: dict) -> bool:
+        if str(order.get("work_type")) not in WORK_TYPES_WITH_ITEM:
+            return False
+        item_id = order.get("item_id")
+        if not isinstance(item_id, str) or not item_id:
+            return False
+        for other in self.world_state.get("work_orders", []):
+            if other is order:
+                continue
+            if other.get("status") != "Assigned":
+                continue
+            if other.get("item_id") != item_id:
+                continue
+            if self._order_priority_key(other) <= self._order_priority_key(order):
+                return True
+        return False
+
+    @staticmethod
+    def _order_priority_key(order: dict) -> tuple[int, str]:
+        return int(order.get("created_tick", 0)), str(order.get("id", ""))
+
+    def _active_order_item_conflict_reason(self, order: dict, npc: dict) -> str | None:
+        if str(order.get("work_type")) not in WORK_TYPES_WITH_ITEM:
+            return None
+        item = self._item_for_order_item(order)
+        if item is None or bool(item.get("consumed", False)):
+            return "item_unavailable"
+        item_id = order.get("item_id")
+        if isinstance(item_id, str):
+            for other in self.world_state.get("work_orders", []):
+                if other is order:
+                    continue
+                if other.get("item_id") != item_id:
+                    continue
+                if other.get("status") != "Completed":
+                    continue
+                if self._order_priority_key(other) <= self._order_priority_key(order):
+                    return "item_unavailable"
+        if self._work_order_item_claimed(order):
+            return "claimed_by_other_order"
+        holder = item.get("holder_npc_id")
+        npc_id = npc.get("id")
+        if holder is not None and holder != npc_id:
+            return "claimed_by_other_order"
+        return None
 
     def _path_distance(
         self,
