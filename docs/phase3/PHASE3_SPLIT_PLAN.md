@@ -17,11 +17,11 @@ Phase 3 is split into two slices to keep deterministic behavior stable while exp
   - disabled priority tiers.
 - Oxygen generator production now requires power availability.
 
-## Phase 3B (next)
+## Phase 3B (in progress)
 
 - Add additional consumer classes and configurable tier policy from docs constants.
 - Add topology-aware power graph recalculation (currently global model).
-- Add richer failure events (brownout/blackout markers) in protocol deltas.
+- Added richer failure events (brownout/blackout/recovery markers) in protocol `delta_tick.entity_changes`. ✅
 - Extend machine durability/power-fault interactions.
 
 ## Exit target for Phase 3

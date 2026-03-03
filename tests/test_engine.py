@@ -575,3 +575,28 @@ def test_reseal_after_breach_stabilizes_oxygen() -> None:
         )
 
     asyncio.run(run())
+
+
+def test_power_events_emitted_for_brownout_and_recovery() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        await engine.connect(ws)
+
+        # force brownout: one consumer, no generation
+        engine.world_state["machines"] = {
+            "2,2": {"type": "Light", "enabled": True, "consume_kw": 1.0}
+        }
+        await engine._execute_tick()
+        first_delta = [m for m in ws.messages if m.get("type") == "delta_tick"][-1]
+        first_events = [e for e in first_delta.get("entity_changes", []) if e.get("type") == "power_event"]
+        assert any(e.get("event") in {"brownout_started", "blackout_started"} for e in first_events)
+
+        # recover power with solar
+        engine.world_state["machines"]["0,0"] = {"type": "SolarPanel", "enabled": True, "generation_kw": 5.0}
+        await engine._execute_tick()
+        second_delta = [m for m in ws.messages if m.get("type") == "delta_tick"][-1]
+        second_events = [e for e in second_delta.get("entity_changes", []) if e.get("type") == "power_event"]
+        assert any(e.get("event") == "power_recovered" for e in second_events)
+
+    asyncio.run(run())

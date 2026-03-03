@@ -197,6 +197,7 @@ class SimulationEngine:
             topology_changed = True
 
         before_compartments = self._compartment_snapshot_map()
+        before_power = self._power_snapshot()
         if topology_changed:
             self._recompute_compartments()
 
@@ -204,14 +205,16 @@ class SimulationEngine:
         self._update_oxygen()
 
         after_compartments = self._compartment_snapshot_map()
+        after_power = self._power_snapshot()
         compartment_changes = self._compartment_changes(before_compartments, after_compartments)
+        power_events = self._power_events(before_power, after_power)
 
         delta = DeltaTick(
             tick=self.tick,
             world_hash=self._world_hash(),
             command_count=applied,
             tile_changes=tile_changes,
-            entity_changes=compartment_changes,
+            entity_changes=compartment_changes + power_events,
         )
         await self._broadcast(delta.model_dump())
 
@@ -664,6 +667,68 @@ class SimulationEngine:
         for cid in before.keys() - after.keys():
             changes.append({"type": "compartment_change", "compartment_id": cid, "reason": "removed", "previous": before[cid]})
         return changes
+
+    def _power_snapshot(self) -> dict:
+        state = self.world_state.get("power_state", {})
+        return {
+            "generation": float(state.get("generation", 0.0)),
+            "demand": float(state.get("demand", 0.0)),
+            "powered": list(state.get("powered_consumers", [])),
+            "unpowered": list(state.get("unpowered_consumers", [])),
+            "disabled": list(state.get("disabled_priorities", [])),
+        }
+
+    @staticmethod
+    def _power_events(before: dict, after: dict) -> list[dict]:
+        events: list[dict] = []
+        before_unpowered = len(before.get("unpowered", []))
+        after_unpowered = len(after.get("unpowered", []))
+        before_powered = len(before.get("powered", []))
+        after_powered = len(after.get("powered", []))
+
+        if before_unpowered == 0 and after_unpowered > 0:
+            event_type = "blackout_started" if after_powered == 0 else "brownout_started"
+            events.append(
+                {
+                    "type": "power_event",
+                    "event": event_type,
+                    "unpowered_count": after_unpowered,
+                    "powered_count": after_powered,
+                }
+            )
+
+        if before_unpowered > 0 and after_unpowered == 0:
+            events.append(
+                {
+                    "type": "power_event",
+                    "event": "power_recovered",
+                    "unpowered_count": after_unpowered,
+                    "powered_count": after_powered,
+                }
+            )
+
+        if before_unpowered != after_unpowered and after_unpowered > 0:
+            events.append(
+                {
+                    "type": "power_event",
+                    "event": "brownout_changed",
+                    "unpowered_count": after_unpowered,
+                    "powered_count": after_powered,
+                    "delta_unpowered": after_unpowered - before_unpowered,
+                }
+            )
+
+        if before_powered != after_powered:
+            events.append(
+                {
+                    "type": "power_event",
+                    "event": "powered_consumers_changed",
+                    "powered_count": after_powered,
+                    "delta_powered": after_powered - before_powered,
+                }
+            )
+
+        return events
 
     @staticmethod
     def _neighbors4(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:
