@@ -8,8 +8,9 @@
 - `docs/phase0/DEFAULT_CONSTANTS.md`
 - `docs/phase0/DELTA_PROTOCOL.md`
 - `docs/phase0/DETERMINISM_TEST_PLAN.md`
+- `docs/phase1/PHASE1_COMPLETION.md`
 
-## Phase 1 server scaffold
+## Phase 1 server scaffold (completed)
 
 A minimal Phase 1 implementation is now included:
 - FastAPI app with `/health`, `/status`, and `/ws`

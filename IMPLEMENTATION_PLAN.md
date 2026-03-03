@@ -47,7 +47,7 @@
 
 **Exit criteria:** two independent runs with same seed + command stream produce identical hashes for N ticks, and all six phase-0 docs are complete and cross-linked.
 
-## Phase 1 — Engine + Transport Skeleton (Days 2–3)
+## Phase 1 — Engine + Transport Skeleton (Days 2–3) ✅ Completed
 
 - Implement FastAPI + WebSocket server.
 - Add simulation clock at 1Hz (authoritative server tick).
@@ -57,7 +57,7 @@
   - delta each tick.
 - Add anonymous session IDs for per-session throttling and attribution.
 
-**Exit criteria:** 5 clients can connect and receive deterministic tick updates.
+**Exit criteria:** 5 clients can connect and receive deterministic tick updates. ✅ Met (see `docs/phase1/PHASE1_COMPLETION.md`).
 
 ## Phase 2 — World + Core Environment (Days 4–7)
 
@@ -165,7 +165,7 @@ This plan is intentionally shaped around your priorities: **simulation integrity
 
 ---
 
-## Phase 1 Bootstrap Notes (Current)
+## Phase 1 Bootstrap Notes (Historical)
 
 Initial Phase 1 scaffold now targets:
 - FastAPI transport (`/health`, `/ws`),
@@ -176,3 +176,8 @@ Initial Phase 1 scaffold now targets:
 - snapshot-on-connect + delta broadcast.
 
 This is an engine skeleton for Phase 1 integration and does not yet include full world mutation semantics.
+
+
+## Phase 1 Completion Documentation
+
+Phase 1 closure, verification mapping, and handoff notes are documented in `docs/phase1/PHASE1_COMPLETION.md`.
