@@ -87,6 +87,14 @@ class SimulationEngine:
         self.command_ack_cache[session_id][command.client_command_id] = ack
         return ack
 
+    def runtime_status(self) -> dict[str, int]:
+        return {
+            "tick": self.tick,
+            "server_sequence_id": self.server_sequence_id,
+            "connected_clients": len(self.connections),
+            "queued_commands": self.command_queue.qsize(),
+        }
+
     def stop(self) -> None:
         self._running = False
 

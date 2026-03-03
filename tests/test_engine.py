@@ -151,3 +151,50 @@ def test_create_work_order_payload_validation() -> None:
         assert valid_ack.result == CommandResult.QUEUED
 
     asyncio.run(run())
+
+
+def test_runtime_status_exposes_tick_and_queue_metrics() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        await engine.connect(ws)
+        await engine.enqueue_command("anon-a", build_command("c1", 1, 1))
+
+        status_before = engine.runtime_status()
+        assert status_before["tick"] == 0
+        assert status_before["connected_clients"] == 1
+        assert status_before["queued_commands"] == 1
+
+        await engine._execute_tick()
+        status_after = engine.runtime_status()
+        assert status_after["tick"] == 1
+        assert status_after["queued_commands"] == 0
+
+    asyncio.run(run())
+
+
+def test_five_clients_receive_same_deterministic_tick_delta() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+
+        sockets = [FakeWebSocket() for _ in range(5)]
+        for ws in sockets:
+            await engine.connect(ws)
+
+        await engine._execute_tick()
+
+        deltas = []
+        for ws in sockets:
+            msgs = [m for m in ws.messages if m.get("type") == "delta_tick"]
+            assert msgs, "expected at least one delta_tick"
+            deltas.append(msgs[-1])
+
+        ticks = {d["tick"] for d in deltas}
+        hashes = {d["world_hash"] for d in deltas}
+        command_counts = {d["command_count"] for d in deltas}
+
+        assert ticks == {1}
+        assert hashes and len(hashes) == 1
+        assert command_counts == {0}
+
+    asyncio.run(run())

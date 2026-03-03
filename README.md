@@ -12,7 +12,7 @@
 ## Phase 1 server scaffold
 
 A minimal Phase 1 implementation is now included:
-- FastAPI app with `/health` and `/ws`
+- FastAPI app with `/health`, `/status`, and `/ws`
 - 1Hz simulation loop
 - anonymous session IDs
 - command queue with server sequencing
@@ -36,7 +36,7 @@ This creates `.venv`, upgrades pip, and installs the project dependencies.
 make run
 ```
 
-Then open `http://127.0.0.1:8000/health`.
+Then open `http://127.0.0.1:8000/health` and `http://127.0.0.1:8000/status`.
 
 ## Testing
 

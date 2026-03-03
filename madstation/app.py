@@ -26,6 +26,11 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/status")
+async def status() -> dict[str, int]:
+    return engine.runtime_status()
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     session_id = await engine.connect(websocket)
