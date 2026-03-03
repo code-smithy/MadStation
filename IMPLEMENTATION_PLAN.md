@@ -127,7 +127,7 @@
 - Added feed-generator command metadata validation (`generator_location`) and order targeting. ✅
 - Added deterministic requeue for blocked feed tasks (`generator_missing_or_disabled`, `generator_unpowered`). ✅
 
-## Phase 6 — Persistence + Recovery + Basic Ops (Days 22–25) 🚧 In Progress
+## Phase 6 — Persistence + Recovery + Basic Ops (Days 22–25) ✅ Completed
 
 ### Phase 6A (implemented in this iteration)
 - Persist world state snapshots on configurable cadence. ✅
@@ -138,8 +138,8 @@
 ### Phase 6B (started in this iteration)
 - Added snapshot schema/version integrity guards (`snapshot_schema_version` + `state_hash`). ✅
 - Added safe fallback bootstrap when snapshot fails integrity checks. ✅
-- Add optional replay window from snapshot forward.
-- Expand ops metrics (`tick duration`, queue trends, idle NPC ratio over time).
+- Added optional replay window from snapshot forward. ✅
+- Added ops metrics (`tick duration`, queue trends, idle NPC ratio over time). ✅
 
 ### Phase 6C (started in this iteration)
 - Added basic ops runtime metrics (`tick_duration_ms_last`, `tick_duration_ms_ema`, `tick_duration_ms_max`, `command_queue_peak`). ✅
@@ -154,7 +154,12 @@
 - Added restore observability metrics (`restored_from_snapshot`, `replay_commands_applied_on_restore`). ✅
 - Added replay-window bound tests (`command_replay_max_entries`) to keep replay growth controlled. ✅
 
-**Exit criteria:** restart resumes world safely within snapshot tolerance.
+### Phase 6F (implemented in this iteration)
+- Added queue-depth trend metrics (`queue_depth_last/ema/max` + bounded `queue_depth_history`). ✅
+- Added idle NPC ratio trend metrics (`idle_npc_ratio_last/ema` + bounded `idle_npc_ratio_history`). ✅
+- Added deterministic tests for trend metric updates and bounded histories. ✅
+
+**Exit criteria:** restart resumes world safely within snapshot tolerance. ✅ Met.
 
 ## Phase 7 — Frontend MVP (parallel, correctness-first)
 

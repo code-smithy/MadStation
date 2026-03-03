@@ -2016,3 +2016,83 @@ def test_phase6e_replay_log_respects_max_entries_window(tmp_path) -> None:
         assert status["replay_log_entries"] <= 3
 
     asyncio.run(run())
+
+
+def test_phase6f_runtime_status_exposes_queue_and_idle_trend_metrics() -> None:
+    async def run() -> None:
+        engine = SimulationEngine(load_snapshot=False)
+        # Ensure at least one npc is active so idle ratio is meaningful
+        engine.world_state["npcs"] = [
+            {
+                "id": "npc-a",
+                "name": "A",
+                "x": 20,
+                "y": 20,
+                "speed": 1,
+                "move_accumulator": 0.0,
+                "health": 100.0,
+                "alive": True,
+                "personality": "baseline",
+                "current_work_order_id": None,
+                "needs": {"hunger": 0.0, "fatigue": 0.0},
+            },
+            {
+                "id": "npc-b",
+                "name": "B",
+                "x": 21,
+                "y": 20,
+                "speed": 1,
+                "move_accumulator": 0.0,
+                "health": 100.0,
+                "alive": True,
+                "personality": "baseline",
+                "current_work_order_id": "wo-b",
+                "needs": {"hunger": 0.0, "fatigue": 0.0},
+            },
+        ]
+
+        await engine.enqueue_command("q1", build_command("b1", 10, 10, "Wall"))
+        engine.last_action_at.pop("q1", None)
+        await engine.enqueue_command("q1", build_command("b2", 11, 10, "Wall"))
+
+        await engine._execute_tick()
+        status = engine.runtime_status()
+
+        assert status["queue_depth_last"] >= 2
+        assert status["queue_depth_ema"] >= 0.0
+        assert status["queue_depth_max"] >= status["queue_depth_last"]
+        assert len(status["queue_depth_history"]) >= 1
+
+        assert 0.0 <= status["idle_npc_ratio_last"] <= 1.0
+        assert 0.0 <= status["idle_npc_ratio_ema"] <= 1.0
+        assert len(status["idle_npc_ratio_history"]) >= 1
+
+    asyncio.run(run())
+
+
+def test_phase6f_idle_ratio_history_is_bounded(tmp_path) -> None:
+    async def run() -> None:
+        engine = SimulationEngine(load_snapshot=False)
+        engine.world_state["npcs"] = [
+            {
+                "id": "npc-only",
+                "name": "Only",
+                "x": 20,
+                "y": 20,
+                "speed": 1,
+                "move_accumulator": 0.0,
+                "health": 100.0,
+                "alive": True,
+                "personality": "baseline",
+                "current_work_order_id": None,
+                "needs": {"hunger": 0.0, "fatigue": 0.0},
+            }
+        ]
+        for _ in range(150):
+            await engine._execute_tick()
+
+        status = engine.runtime_status()
+        assert len(status["idle_npc_ratio_history"]) <= 120
+        assert len(status["queue_depth_history"]) <= 120
+
+    asyncio.run(run())

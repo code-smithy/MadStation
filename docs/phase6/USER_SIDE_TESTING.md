@@ -23,7 +23,7 @@ Use this checklist to validate persistence/recovery behavior.
 ## 3) Tolerance expectations
 
 - On crash between cadence boundaries, up to `snapshot_cadence_ticks - 1` ticks may be lost by design.
-- This is expected until replay/logging is added in later Phase 6 slices.
+- Replay-window recovery is now available; this tolerance note still applies between snapshot boundaries before replayed commands.
 
 
 ## 4) Snapshot integrity guard checks
@@ -60,3 +60,12 @@ Use this checklist to validate persistence/recovery behavior.
 2. Verify `/status.restored_from_snapshot == 1`.
 3. Verify `/status.replay_commands_applied_on_restore` reflects replayed command count (>0 when post-snapshot commands existed).
 4. Verify `/status.replay_log_entries` stays bounded over time based on replay-window configuration.
+
+
+## 8) Queue/idle trend metrics checks
+
+1. Observe `/status` fields:
+   - `queue_depth_last`, `queue_depth_ema`, `queue_depth_max`, `queue_depth_history`
+   - `idle_npc_ratio_last`, `idle_npc_ratio_ema`, `idle_npc_ratio_history`
+2. Burst command submissions and verify queue depth metrics respond.
+3. Run for many ticks and confirm history arrays remain bounded (windowed).

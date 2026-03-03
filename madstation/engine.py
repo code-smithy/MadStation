@@ -114,6 +114,13 @@ class SimulationEngine:
         self.tick_duration_ms_ema: float = 0.0
         self.tick_duration_ms_max: float = 0.0
         self.command_queue_peak: int = 0
+        self.queue_depth_last: int = 0
+        self.queue_depth_ema: float = 0.0
+        self.queue_depth_max: int = 0
+        self.queue_depth_history: list[int] = []
+        self.idle_npc_ratio_last: float = 0.0
+        self.idle_npc_ratio_ema: float = 0.0
+        self.idle_npc_ratio_history: list[float] = []
         self.replay_commands_applied_on_restore: int = 0
         self.restored_from_snapshot: bool = False
 
@@ -179,7 +186,7 @@ class SimulationEngine:
     def world_snapshot(self) -> dict:
         return {"tick": self.tick, "world": self.world_state}
 
-    def runtime_status(self) -> dict[str, int | float | str]:
+    def runtime_status(self) -> dict[str, int | float | str | list[int] | list[float]]:
         open_door_count = sum(
             1 for value in self.world_state["door_states"].values() if isinstance(value, dict) and value.get("open", False)
         )
@@ -205,6 +212,13 @@ class SimulationEngine:
             "tick_duration_ms_ema": round(self.tick_duration_ms_ema, 3),
             "tick_duration_ms_max": round(self.tick_duration_ms_max, 3),
             "command_queue_peak": self.command_queue_peak,
+            "queue_depth_last": self.queue_depth_last,
+            "queue_depth_ema": round(self.queue_depth_ema, 3),
+            "queue_depth_max": self.queue_depth_max,
+            "queue_depth_history": list(self.queue_depth_history),
+            "idle_npc_ratio_last": round(self.idle_npc_ratio_last, 4),
+            "idle_npc_ratio_ema": round(self.idle_npc_ratio_ema, 4),
+            "idle_npc_ratio_history": list(self.idle_npc_ratio_history),
             "replay_log_entries": self._replay_log_entry_count(),
             "replay_log_path": str(self.replay_log_path),
             "restored_from_snapshot": int(self.restored_from_snapshot),
@@ -229,6 +243,7 @@ class SimulationEngine:
     async def _execute_tick(self) -> None:
         tick_started_at = time.monotonic()
         self.tick += 1
+        queue_depth_before_drain = self.command_queue.qsize()
         drained: list[PendingCommand] = []
         while not self.command_queue.empty():
             drained.append(self.command_queue.get_nowait())
@@ -313,6 +328,32 @@ class SimulationEngine:
         if applied_commands_for_replay:
             self._append_replay_entries(applied_commands_for_replay)
         self._maybe_persist_snapshot()
+
+        self.queue_depth_last = queue_depth_before_drain
+        if self.tick <= 1:
+            self.queue_depth_ema = float(queue_depth_before_drain)
+        else:
+            self.queue_depth_ema = (0.8 * self.queue_depth_ema) + (0.2 * float(queue_depth_before_drain))
+        self.queue_depth_max = max(self.queue_depth_max, queue_depth_before_drain)
+        self.queue_depth_history.append(int(queue_depth_before_drain))
+        if len(self.queue_depth_history) > 120:
+            self.queue_depth_history = self.queue_depth_history[-120:]
+
+        alive_npcs = [npc for npc in self.world_state.get("npcs", []) if npc.get("alive", True)]
+        if alive_npcs:
+            idle_npcs = [npc for npc in alive_npcs if not npc.get("current_work_order_id")]
+            idle_ratio = len(idle_npcs) / len(alive_npcs)
+        else:
+            idle_ratio = 0.0
+        self.idle_npc_ratio_last = idle_ratio
+        if self.tick <= 1:
+            self.idle_npc_ratio_ema = idle_ratio
+        else:
+            self.idle_npc_ratio_ema = (0.8 * self.idle_npc_ratio_ema) + (0.2 * idle_ratio)
+        self.idle_npc_ratio_history.append(round(idle_ratio, 4))
+        if len(self.idle_npc_ratio_history) > 120:
+            self.idle_npc_ratio_history = self.idle_npc_ratio_history[-120:]
+
         elapsed_ms = (time.monotonic() - tick_started_at) * 1000.0
         self.tick_duration_ms_last = elapsed_ms
         if self.tick <= 1:

@@ -13,8 +13,8 @@ Phase 6 is split into persistence/recovery foundations first, then broader ops o
 
 - Added snapshot integrity/version guards (`snapshot_schema_version` + deterministic `state_hash` verification). ✅
 - Added restore fallback behavior for invalid/corrupt snapshots (safe default bootstrap). ✅
-- Add optional command replay window after snapshot restore.
-- Add richer basic ops metrics (tick duration, queue depth trends, idle NPC ratio timelines).
+- Added optional command replay window after snapshot restore. ✅
+- Added richer basic ops metrics (tick duration, queue depth trends, idle NPC ratio timelines). ✅
 
 ## Exit target for Phase 6
 
@@ -39,3 +39,10 @@ Phase 6 is split into persistence/recovery foundations first, then broader ops o
 
 - Added restore observability metrics: `restored_from_snapshot` and `replay_commands_applied_on_restore`. ✅
 - Added replay-window max-entry enforcement tests to bound replay growth. ✅
+
+
+## Phase 6 completion check
+
+- Restart resumes from snapshot with integrity validation and replay-window recovery. ✅
+- Replay window is bounded and restore observability is exposed in runtime status. ✅
+- Queue-depth and idle-NPC-ratio trend metrics are exposed with bounded histories. ✅
