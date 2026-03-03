@@ -1111,3 +1111,86 @@ def test_runtime_status_reports_active_body_count() -> None:
     ]
     status = engine.runtime_status()
     assert status["active_body_count"] == 2
+
+
+def test_task_aware_assignment_prefers_nearest_reachable_dispose_order() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-assign",
+            "name": "Assign",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {"id": "wo-far", "work_type": "DisposeBody", "status": "Queued", "location": {"x": 15, "y": 5}, "created_tick": 1, "progress": 0, "required_progress": 2},
+        {"id": "wo-near", "work_type": "DisposeBody", "status": "Queued", "location": {"x": 7, "y": 5}, "created_tick": 2, "progress": 0, "required_progress": 2},
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(5, 16):
+        engine.world_state["grid"][5][x] = "Floor"
+    engine._recompute_compartments()
+
+    engine.tick = 30
+    _, work_changes, _ = engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert npc["current_work_order_id"] == "wo-near"
+    assert any(c.get("type") == "work_order_assigned" and c.get("work_order_id") == "wo-near" for c in work_changes)
+
+
+def test_assigned_order_requeues_when_target_becomes_unreachable() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-path",
+            "name": "Path",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-blocked",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-blocked",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 7, "y": 5},
+            "body_id": "body-b",
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-path",
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][7] = "Floor"
+    # no connecting walkable tile between (5,5) and (7,5) => unreachable
+    engine._recompute_compartments()
+
+    _, work_changes, _ = engine._update_npcs()
+    order = engine.world_state["work_orders"][0]
+    npc = engine.world_state["npcs"][0]
+    assert order["status"] == "Queued"
+    assert npc.get("current_work_order_id") is None
+    assert any(c.get("type") == "work_order_unassigned" and c.get("reason") == "path_unreachable" for c in work_changes)

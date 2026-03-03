@@ -157,7 +157,7 @@ See `docs/phase3/USER_SIDE_TESTING.md` for the full step-by-step command checkli
 
 ## Phase 4 progress
 
-Phase 4 is continuing with deterministic NPC survival mechanics: persistent 10-NPC roster, bounded speed attributes, diagonal movement with oxygen-aware path search, suffocation death handling, automatic `DisposeBody` work-order creation, deterministic DisposeBody assignment/progress/completion, a baseline needs/personality layer that does not override survival constraints, and body lifecycle metadata/disposal state tracking. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
+Phase 4 core is complete for MVP scope: deterministic NPC roster/movement, survival-first needs/personality behavior, suffocation death handling, `DisposeBody` work-order lifecycle with task-aware nearest-reachable path assignment, and deterministic body metadata/disposal state tracking. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
 
 ## Phase 4 manual testing
 

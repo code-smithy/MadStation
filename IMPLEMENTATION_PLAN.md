@@ -88,7 +88,7 @@
 
 **Exit criteria:** deficits consistently disable lower tiers first and recover deterministically.
 
-## Phase 4 — NPC Core + Permanent Death (Days 11–15) 🚧 In Progress
+## Phase 4 — NPC Core + Permanent Death (Days 11–15) ✅ Completed
 
 ### Phase 4A (started in current iteration)
 - Added 10 named persistent NPCs. ✅
@@ -99,12 +99,13 @@
 - Added deterministic DisposeBody work-order assignment/execution baseline. ✅
 - Added baseline needs/personality layer with survival-first enforcement. ✅
 
-### Phase 4B (next)
-- Added deterministic oxygen-aware path search baseline for multi-step routing (full task/path integration still pending). ✅
+### Phase 4B (completed)
+- Added deterministic oxygen-aware path search baseline for multi-step routing. ✅
+- Upgraded task-aware path selection/execution for `DisposeBody` with deterministic nearest-reachable assignment and re-queue on unreachable paths. ✅
 - Expanded baseline needs/personality stack while preserving survival-first constraints. ✅
 - Enriched death/body lifecycle metadata and disposal-state integration. ✅
 
-**Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp.
+**Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp. ✅ Met.
 
 ## Phase 5 — Work Orders + Physical Logistics Loop (Days 16–21)
 
