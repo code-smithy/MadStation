@@ -9,6 +9,9 @@ Phase 4 is started with a deterministic NPC survival core before broader behavio
 - Added survival-first NPC movement using diagonal neighbors (8-way evaluation) with deterministic oxygen-aware path search.
 - Added suffocation damage and permanent death handling.
 - Added automatic `DisposeBody` work-order creation on NPC death.
+- Added deterministic `DisposeBody` work-order assignment/execution baseline (assign, progress, complete, requeue on assignee death).
+- Added deterministic needs drift (`hunger`, `fatigue`) with `npc_need_state` events.
+- Added personality modifier baseline (`diligent` work-progress boost) while preserving survival-first behavior.
 - Added NPC/death/work-order delta outputs through:
   - `delta_tick.entity_changes` (movement/survival/death markers),
   - `delta_tick.work_order_changes`,
@@ -17,11 +20,12 @@ Phase 4 is started with a deterministic NPC survival core before broader behavio
 ## Phase 4B (next)
 
 - Upgrade oxygen-aware path search to full task-aware pathfinding across dynamic topology.
-- Add needs model and personality modifiers (without overriding survival constraints).
-- Add richer death metadata and body lifecycle progression.
+- Expanded baseline needs/personality model while preserving survival-first constraints. ✅
+- Added richer death metadata and body lifecycle progression (`body_created`/`body_disposed`, disposal linkage on completed `DisposeBody`). ✅
 
 ## Exit target for Phase 4
 
 - NPC roster persists and updates deterministically.
 - NPCs prefer safer oxygen states when available.
 - Deaths are permanent, logged, and produce cleanup work orders.
+- Active body lifecycle state is observable and deterministic.

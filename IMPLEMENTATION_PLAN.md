@@ -96,11 +96,13 @@
 - Added deterministic diagonal survival movement baseline (full pathfinding still pending). ✅
 - Added suffocation damage/death handling with permanent death records. ✅
 - Added automatic `DisposeBody` work-order creation on death. ✅
+- Added deterministic DisposeBody work-order assignment/execution baseline. ✅
+- Added baseline needs/personality layer with survival-first enforcement. ✅
 
 ### Phase 4B (next)
 - Added deterministic oxygen-aware path search baseline for multi-step routing (full task/path integration still pending). ✅
-- Expand needs/personality stack while preserving survival-first constraints.
-- Enrich death/body lifecycle state and task integration.
+- Expanded baseline needs/personality stack while preserving survival-first constraints. ✅
+- Enriched death/body lifecycle metadata and disposal-state integration. ✅
 
 **Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp.
 

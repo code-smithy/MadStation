@@ -17,6 +17,7 @@ Use this checklist to validate initial NPC/death behavior.
   - `world.npcs`
   - `world.work_orders`
   - `world.death_log`
+  - `world.bodies`
 
 ## 2) NPC roster checks
 
@@ -47,3 +48,27 @@ Watch `delta_tick` payloads for:
   - `npc_death`.
 - `work_order_changes` entries for auto-created `DisposeBody` orders.
 - `death_log_appends` entries for newly recorded deaths.
+
+
+## 5) DisposeBody lifecycle checks
+
+- After an NPC death, watch `delta_tick.work_order_changes` for:
+  - `work_order_created`,
+  - `work_order_assigned`,
+  - `work_order_progress`,
+  - `work_order_completed`.
+- If an assignee dies before completion, verify `work_order_unassigned` and re-queue behavior.
+
+
+## 6) Need/personality checks
+
+- Observe `delta_tick.entity_changes` for `npc_need_state` when hunger/fatigue cross threshold.
+- Confirm in low oxygen conditions NPCs still prioritize oxygen-safe movement over assigned work targets.
+- In oxygen-safe conditions, compare diligent vs baseline NPC work-order progress rates (diligent should progress faster).
+
+
+## 7) Body lifecycle metadata checks
+
+- On death, verify `death_log_appends` includes extended fields (oxygen at death, compartment, personality, needs snapshot).
+- Verify `entity_changes` includes `body_created` after death.
+- After `DisposeBody` completion, verify `entity_changes` includes `body_disposed` and corresponding body record is marked disposed.

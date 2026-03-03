@@ -729,9 +729,13 @@ def test_npc_death_appends_log_and_dispose_body_work_order() -> None:
     assert engine.world_state["population"] == 0
     assert len(death_appends) == 1
     assert death_appends[0]["cause"] == "suffocation"
+    assert "oxygen_percent_at_death" in death_appends[0]
+    assert "compartment_id" in death_appends[0]
     assert len(work_order_changes) == 1
     assert work_order_changes[0]["work_order"]["work_type"] == "DisposeBody"
+    assert "body_id" in work_order_changes[0]["work_order"]
     assert any(change.get("type") == "npc_death" for change in npc_changes)
+    assert any(change.get("type") == "body_created" for change in npc_changes)
 
 
 def test_npc_path_search_can_route_through_door_to_safer_compartment() -> None:
@@ -791,3 +795,319 @@ def test_door_tile_oxygen_uses_adjacent_compartment_values() -> None:
 
     oxygen = engine._oxygen_at_tile(6, 5, engine.world_state["compartment_index"], {int(c["id"]): c for c in engine.world_state["compartments"]})
     assert oxygen == 73.0
+
+
+def test_dispose_body_work_order_gets_assigned_and_completed() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-worker",
+            "name": "Worker",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "current_work_order_id": None,
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-1",
+            "work_type": "DisposeBody",
+            "status": "Queued",
+            "location": {"x": 7, "y": 5},
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 2,
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][6] = "Floor"
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+
+    engine.tick = 10
+    _, work_changes_1, _ = engine._update_npcs()
+    order = engine.world_state["work_orders"][0]
+    npc = engine.world_state["npcs"][0]
+    assert order["status"] == "Assigned"
+    assert npc["current_work_order_id"] == "wo-1"
+    assert any(c.get("type") == "work_order_assigned" for c in work_changes_1)
+
+    engine.tick = 11
+    _, work_changes_2, _ = engine._update_npcs()
+    order = engine.world_state["work_orders"][0]
+    assert int(order["progress"]) >= 1
+    assert any(c.get("type") == "work_order_progress" for c in work_changes_2)
+
+    engine.tick = 12
+    _, work_changes_3, _ = engine._update_npcs()
+    order = engine.world_state["work_orders"][0]
+    npc = engine.world_state["npcs"][0]
+    assert order["status"] == "Completed"
+    assert npc.get("current_work_order_id") is None
+    assert any(c.get("type") == "work_order_completed" for c in work_changes_3)
+
+
+def test_assigned_work_order_returns_to_queue_if_assignee_dies() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-fragile",
+            "name": "Fragile",
+            "x": 8,
+            "y": 8,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 8.0,
+            "alive": True,
+            "current_work_order_id": "wo-dead",
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-dead",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 8, "y": 8},
+            "created_tick": 5,
+            "progress": 0,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-fragile",
+            "assigned_tick": 9,
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][8][8] = "Floor"
+    engine._recompute_compartments()
+    cid = int(engine.world_state["compartment_index"]["8,8"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == cid:
+            comp["oxygen_percent"] = 0.0
+
+    engine.tick = 20
+    _, work_changes, death_log = engine._update_npcs()
+
+    order = engine.world_state["work_orders"][0]
+    assert len(death_log) == 1
+    assert order["status"] == "Queued"
+    assert "assignee_npc_id" not in order
+    assert any(c.get("type") == "work_order_unassigned" for c in work_changes)
+
+
+def test_personality_does_not_override_survival_when_low_oxygen() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-safe-first",
+            "name": "SafeFirst",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "diligent",
+            "current_work_order_id": "wo-far",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-far",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 10, "y": 5},
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-safe-first",
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    # low-oxygen start + safe zone one step away through a door (opposite of work target direction)
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][4] = "Door"
+    engine.world_state["door_states"]["4,5"] = {"open": True}
+    engine.world_state["grid"][5][3] = "Floor"
+    engine.world_state["grid"][5][6] = "Floor"
+    engine._recompute_compartments()
+
+    start_comp = int(engine.world_state["compartment_index"]["5,5"])
+    safe_comp = int(engine.world_state["compartment_index"]["3,5"])
+    for comp in engine.world_state["compartments"]:
+        cid = int(comp["id"])
+        if cid == start_comp:
+            comp["oxygen_percent"] = 5.0
+        elif cid == safe_comp:
+            comp["oxygen_percent"] = 90.0
+
+    engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (4, 5)
+
+
+def test_diligent_personality_increases_work_progress_when_safe() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-diligent",
+            "name": "Diligent",
+            "x": 7,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "diligent",
+            "current_work_order_id": "wo-d",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-d",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 7, "y": 5},
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 4,
+            "assignee_npc_id": "npc-diligent",
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+    cid = int(engine.world_state["compartment_index"]["7,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == cid:
+            comp["oxygen_percent"] = 90.0
+
+    _, work_changes, _ = engine._update_npcs()
+    order = engine.world_state["work_orders"][0]
+    assert order["progress"] == 2
+    assert any(c.get("type") == "work_order_progress" for c in work_changes)
+
+
+def test_npc_needs_drift_and_emit_need_state() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-needs",
+            "name": "Needs",
+            "x": 4,
+            "y": 4,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 74.9, "fatigue": 74.9},
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][4][4] = "Floor"
+    engine._recompute_compartments()
+
+    npc_changes, _, _ = engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert npc["needs"]["hunger"] > 74.9
+    assert npc["needs"]["fatigue"] > 74.9
+    assert any(c.get("type") == "npc_need_state" for c in npc_changes)
+
+
+def test_body_lifecycle_updates_on_dispose_work_completion() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-cleaner",
+            "name": "Cleaner",
+            "x": 7,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-clean",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["bodies"] = [
+        {
+            "id": "body-1",
+            "npc_id": "npc-dead",
+            "name": "Dead",
+            "location": {"x": 7, "y": 5},
+            "created_tick": 1,
+            "disposed": False,
+            "disposed_tick": None,
+            "disposed_by_npc_id": None,
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-clean",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 7, "y": 5},
+            "body_id": "body-1",
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-cleaner",
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+    cid = int(engine.world_state["compartment_index"]["7,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == cid:
+            comp["oxygen_percent"] = 90.0
+
+    engine.tick = 50
+    npc_changes, work_changes, _ = engine._update_npcs()
+
+    body = engine.world_state["bodies"][0]
+    order = engine.world_state["work_orders"][0]
+    assert body["disposed"] is True
+    assert body["disposed_tick"] == 50
+    assert body["disposed_by_npc_id"] == "npc-cleaner"
+    assert order["status"] == "Completed"
+    assert any(c.get("type") == "body_disposed" for c in npc_changes)
+    assert any(c.get("type") == "work_order_completed" and c.get("disposed_body_id") == "body-1" for c in work_changes)
+
+
+def test_runtime_status_reports_active_body_count() -> None:
+    engine = SimulationEngine()
+    engine.world_state["bodies"] = [
+        {"id": "b1", "disposed": False},
+        {"id": "b2", "disposed": True},
+        {"id": "b3", "disposed": False},
+    ]
+    status = engine.runtime_status()
+    assert status["active_body_count"] == 2
