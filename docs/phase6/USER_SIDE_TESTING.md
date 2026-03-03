@@ -43,3 +43,12 @@ Use this checklist to validate persistence/recovery behavior.
    - `command_queue_peak`
 2. Burst-enqueue several commands quickly and confirm `command_queue_peak` increases.
 3. Let simulation run for multiple ticks and confirm duration fields remain populated and stable.
+
+
+## 6) Replay-window recovery checks
+
+1. Run until a snapshot is persisted.
+2. Apply one or more structural/work-order commands after that snapshot point.
+3. Stop and restart server.
+4. Confirm post-snapshot commands are restored via replay window (no full-state loss back to old snapshot).
+5. Confirm replay log shrinks after new snapshot persist (window compaction).

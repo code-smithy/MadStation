@@ -182,4 +182,4 @@ Phase 5 scope is now completed for the current roadmap slice: logistics/work-ord
 
 ## Phase 6 progress
 
-Phase 6 has started with persistence/recovery foundations: configurable snapshot cadence/path, periodic snapshot persistence during ticks, startup restore from snapshot, snapshot-related runtime status fields, integrity guards (`snapshot_schema_version` + `state_hash`) with safe fallback on invalid snapshots, and early ops metrics (`tick_duration_ms_*`, `command_queue_peak`). See `docs/phase6/PHASE6_SPLIT_PLAN.md` and `docs/phase6/USER_SIDE_TESTING.md`.
+Phase 6 has started with persistence/recovery foundations: configurable snapshot cadence/path, periodic snapshot persistence, startup snapshot restore with integrity guards (`snapshot_schema_version` + `state_hash`), early ops metrics (`tick_duration_ms_*`, `command_queue_peak`), and a replay-window foundation for post-snapshot command recovery. See `docs/phase6/PHASE6_SPLIT_PLAN.md` and `docs/phase6/USER_SIDE_TESTING.md`.

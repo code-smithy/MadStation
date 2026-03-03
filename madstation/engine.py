@@ -58,6 +58,8 @@ class SimulationEngine:
         self,
         snapshot_path: str | None = None,
         snapshot_cadence_ticks: int | None = None,
+        replay_log_path: str | None = None,
+        replay_max_entries: int | None = None,
         load_snapshot: bool = True,
     ) -> None:
         width, height = 50, 50
@@ -104,6 +106,9 @@ class SimulationEngine:
         self.snapshot_path = Path(snapshot_path or SETTINGS.snapshot_file_path)
         cadence = snapshot_cadence_ticks if snapshot_cadence_ticks is not None else SETTINGS.snapshot_cadence_ticks
         self.snapshot_cadence_ticks = max(1, int(cadence))
+        self.replay_log_path = Path(replay_log_path or SETTINGS.command_replay_log_path)
+        replay_limit = replay_max_entries if replay_max_entries is not None else SETTINGS.command_replay_max_entries
+        self.replay_max_entries = max(1, int(replay_limit))
         self.last_snapshot_tick: int = 0
         self.tick_duration_ms_last: float = 0.0
         self.tick_duration_ms_ema: float = 0.0
@@ -111,6 +116,8 @@ class SimulationEngine:
         self.command_queue_peak: int = 0
 
         restored = load_snapshot and self._load_snapshot_if_available()
+        if restored:
+            self._replay_commands_since_snapshot()
         self._ensure_world_defaults()
         if not restored:
             self._recompute_compartments()
@@ -169,7 +176,7 @@ class SimulationEngine:
     def world_snapshot(self) -> dict:
         return {"tick": self.tick, "world": self.world_state}
 
-    def runtime_status(self) -> dict[str, int]:
+    def runtime_status(self) -> dict[str, int | float | str]:
         open_door_count = sum(
             1 for value in self.world_state["door_states"].values() if isinstance(value, dict) and value.get("open", False)
         )
@@ -195,6 +202,8 @@ class SimulationEngine:
             "tick_duration_ms_ema": round(self.tick_duration_ms_ema, 3),
             "tick_duration_ms_max": round(self.tick_duration_ms_max, 3),
             "command_queue_peak": self.command_queue_peak,
+            "replay_log_entries": self._replay_log_entry_count(),
+            "replay_log_path": str(self.replay_log_path),
         }
 
     def stop(self) -> None:
@@ -223,6 +232,7 @@ class SimulationEngine:
         applied = 0
         tile_changes: list[dict] = []
         command_work_order_changes: list[dict] = []
+        applied_commands_for_replay: list[dict] = []
         topology_changed = False
 
         for pending in drained:
@@ -249,6 +259,14 @@ class SimulationEngine:
             elif pending.command.type is CommandType.CREATE_WORK_ORDER:
                 created_order = self._apply_create_work_order(pending.command, self.server_sequence_id)
                 command_work_order_changes.append({"type": "work_order_created_by_command", "work_order": created_order})
+
+            applied_commands_for_replay.append(
+                {
+                    "tick": self.tick,
+                    "server_sequence_id": self.server_sequence_id,
+                    "command": pending.command.model_dump(),
+                }
+            )
 
             ack = CommandAck(
                 client_command_id=pending.command.client_command_id,
@@ -287,6 +305,8 @@ class SimulationEngine:
             work_order_changes=command_work_order_changes + work_order_changes,
             death_log_appends=death_log_appends,
         )
+        if applied_commands_for_replay:
+            self._append_replay_entries(applied_commands_for_replay)
         self._maybe_persist_snapshot()
         elapsed_ms = (time.monotonic() - tick_started_at) * 1000.0
         self.tick_duration_ms_last = elapsed_ms
@@ -379,11 +399,73 @@ class SimulationEngine:
         temp_path.write_text(json.dumps(self._snapshot_payload(), sort_keys=True))
         temp_path.replace(self.snapshot_path)
         self.last_snapshot_tick = self.tick
+        self._trim_replay_log(min_server_sequence_id_exclusive=self.server_sequence_id)
 
     def _maybe_persist_snapshot(self) -> None:
         if self.tick % self.snapshot_cadence_ticks != 0:
             return
         self._persist_snapshot()
+
+    def _append_replay_entries(self, entries: list[dict]) -> None:
+        if not entries:
+            return
+        self.replay_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.replay_log_path.open("a", encoding="utf-8") as fp:
+            for entry in entries:
+                fp.write(json.dumps(entry, sort_keys=True) + "\n")
+        self._trim_replay_log(min_server_sequence_id_exclusive=self.server_sequence_id - self.replay_max_entries)
+
+    def _trim_replay_log(self, min_server_sequence_id_exclusive: int) -> None:
+        if not self.replay_log_path.exists():
+            return
+        kept: list[str] = []
+        for line in self.replay_log_path.read_text().splitlines():
+            try:
+                entry = json.loads(line)
+            except Exception:
+                continue
+            seq = int(entry.get("server_sequence_id", -1))
+            if seq > min_server_sequence_id_exclusive:
+                kept.append(json.dumps(entry, sort_keys=True))
+        temp_path = self.replay_log_path.with_suffix(self.replay_log_path.suffix + ".tmp")
+        temp_path.write_text("\n".join(kept) + ("\n" if kept else ""))
+        temp_path.replace(self.replay_log_path)
+
+    def _replay_commands_since_snapshot(self) -> None:
+        if not self.replay_log_path.exists():
+            return
+        replayed_topology_change = False
+        for line in self.replay_log_path.read_text().splitlines():
+            try:
+                entry = json.loads(line)
+            except Exception:
+                continue
+            seq = int(entry.get("server_sequence_id", -1))
+            if seq <= self.server_sequence_id:
+                continue
+            command_payload = entry.get("command")
+            if not isinstance(command_payload, dict):
+                continue
+            try:
+                command = ClientCommand.model_validate(command_payload)
+            except Exception:
+                continue
+            if command.type in {CommandType.BUILD, CommandType.DECONSTRUCT}:
+                _, did_change = self._apply_structural_command(command)
+                replayed_topology_change = replayed_topology_change or did_change
+            elif command.type is CommandType.CREATE_WORK_ORDER:
+                self._apply_create_work_order(command, seq)
+            self.server_sequence_id = max(self.server_sequence_id, seq)
+            self.tick = max(self.tick, int(entry.get("tick", self.tick)))
+
+        if replayed_topology_change:
+            self._recompute_compartments()
+        self._update_power()
+
+    def _replay_log_entry_count(self) -> int:
+        if not self.replay_log_path.exists():
+            return 0
+        return sum(1 for _ in self.replay_log_path.open("r", encoding="utf-8"))
 
     async def _broadcast(self, payload: dict) -> None:
         for session_id in list(self.connections.keys()):

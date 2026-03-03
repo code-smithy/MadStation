@@ -1908,3 +1908,60 @@ def test_phase6c_runtime_status_exposes_tick_and_queue_ops_metrics() -> None:
         assert status_after["command_queue_peak"] >= 2
 
     asyncio.run(run())
+
+
+def test_phase6d_replays_commands_after_snapshot_restore(tmp_path) -> None:
+    async def run() -> None:
+        snapshot_path = tmp_path / "snapshot.json"
+        replay_path = tmp_path / "replay.jsonl"
+
+        engine = SimulationEngine(
+            snapshot_path=str(snapshot_path),
+            snapshot_cadence_ticks=100,
+            replay_log_path=str(replay_path),
+            load_snapshot=False,
+        )
+
+        # establish baseline snapshot first
+        engine._persist_snapshot()
+
+        # apply one post-snapshot structural command (captured in replay log)
+        await engine.enqueue_command("sess", build_command("b1", 18, 18, "Wall"))
+        await engine._execute_tick()
+        assert replay_path.exists() is True
+
+        # restart from snapshot + replay should recover the post-snapshot command
+        restored = SimulationEngine(
+            snapshot_path=str(snapshot_path),
+            replay_log_path=str(replay_path),
+            load_snapshot=True,
+        )
+        assert restored.world_state["grid"][18][18] == "Wall"
+        assert int(restored.server_sequence_id) >= 1
+        assert int(restored.runtime_status()["replay_log_entries"]) >= 1
+
+    asyncio.run(run())
+
+
+def test_phase6d_snapshot_trim_replay_log(tmp_path) -> None:
+    async def run() -> None:
+        snapshot_path = tmp_path / "snapshot_trim.json"
+        replay_path = tmp_path / "replay_trim.jsonl"
+        engine = SimulationEngine(
+            snapshot_path=str(snapshot_path),
+            snapshot_cadence_ticks=5,
+            replay_log_path=str(replay_path),
+            load_snapshot=False,
+        )
+
+        await engine.enqueue_command("s1", build_command("b1", 16, 16, "Wall"))
+        await engine._execute_tick()  # seq 1 logged
+        await engine.enqueue_command("s2", build_command("b2", 17, 17, "Wall"))
+        await engine._execute_tick()  # seq 2 logged
+        assert int(engine.runtime_status()["replay_log_entries"]) >= 2
+
+        # Persisting snapshot at current sequence should trim replay entries up to snapshot point
+        engine._persist_snapshot()
+        assert int(engine.runtime_status()["replay_log_entries"]) == 0
+
+    asyncio.run(run())

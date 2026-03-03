@@ -145,6 +145,11 @@
 - Added basic ops runtime metrics (`tick_duration_ms_last`, `tick_duration_ms_ema`, `tick_duration_ms_max`, `command_queue_peak`). ✅
 - Added deterministic test coverage for ops metric updates. ✅
 
+### Phase 6D (started in this iteration)
+- Added replay-log window for post-snapshot command recovery. ✅
+- Added startup replay for commands newer than snapshot sequence. ✅
+- Added replay-log compaction on snapshot persist. ✅
+
 **Exit criteria:** restart resumes world safely within snapshot tolerance.
 
 ## Phase 7 — Frontend MVP (parallel, correctness-first)

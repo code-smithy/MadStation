@@ -26,3 +26,10 @@ Phase 6 is split into persistence/recovery foundations first, then broader ops o
 
 - Added basic ops metrics in runtime status: `tick_duration_ms_last`, `tick_duration_ms_ema`, `tick_duration_ms_max`, and `command_queue_peak`. ✅
 - Added deterministic test coverage for queue-peak and tick-duration metric updates. ✅
+
+
+## Phase 6D (started in this iteration)
+
+- Added replay-log window foundation (`jsonl`) for post-snapshot applied commands. ✅
+- Added startup replay of commands newer than snapshot `server_sequence_id`. ✅
+- Added replay-log trimming on snapshot persist to bound replay window. ✅

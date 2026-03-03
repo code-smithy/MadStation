@@ -18,6 +18,8 @@ class Settings:
     snapshot_cadence_ticks: int = 10
     snapshot_file_path: str = ".madstation_snapshot.json"
     snapshot_schema_version: int = 1
+    command_replay_log_path: str = ".madstation_replay_log.jsonl"
+    command_replay_max_entries: int = 5000
 
 
 SETTINGS = Settings()
