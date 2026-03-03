@@ -31,6 +31,15 @@ async def status() -> dict[str, int]:
     return engine.runtime_status()
 
 
+
+
+@app.get("/ws")
+async def websocket_usage() -> dict[str, str]:
+    return {
+        "detail": "Use WebSocket upgrade on /ws (ws://...), not HTTP GET.",
+        "example": "new WebSocket(\"ws://127.0.0.1:8000/ws\")",
+    }
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     session_id = await engine.connect(websocket)

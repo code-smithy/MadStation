@@ -13,6 +13,7 @@
 
 A minimal Phase 1 implementation is now included:
 - FastAPI app with `/health`, `/status`, and `/ws`
+- `GET /ws` returns usage help; actual client connection must be a WebSocket upgrade on `ws://.../ws`.
 - 1Hz simulation loop
 - anonymous session IDs
 - command queue with server sequencing
@@ -37,6 +38,36 @@ make run
 ```
 
 Then open `http://127.0.0.1:8000/health` and `http://127.0.0.1:8000/status`.
+
+
+## Connect a client (WebSocket)
+
+`connected_clients` increases when a client opens a WebSocket to `/ws` and stays connected.
+
+### Quick browser console test
+
+1. Open `http://127.0.0.1:8000/health` in a browser.
+2. Open DevTools Console and run:
+
+```js
+const ws = new WebSocket("ws://127.0.0.1:8000/ws");
+ws.onmessage = (event) => console.log("WS message:", event.data);
+```
+
+3. In another tab, check `http://127.0.0.1:8000/status`.
+   - You should see `connected_clients` increase while the socket remains open.
+
+### Send a command over the same socket
+
+```js
+ws.send(JSON.stringify({
+  client_command_id: "cmd-1",
+  type: "Build",
+  payload: { x: 1, y: 1 }
+}));
+```
+
+You should receive a `command_ack` and subsequent `delta_tick` messages.
 
 ## Testing
 
