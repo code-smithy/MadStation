@@ -29,11 +29,7 @@ MACHINE_BATTERY = "Battery"
 MACHINE_HEATER = "Heater"
 MACHINE_LIGHT = "Light"
 
-POWER_PRIORITY = {
-    MACHINE_OXYGEN_GENERATOR: 1,
-    MACHINE_HEATER: 3,
-    MACHINE_LIGHT: 7,
-}
+POWER_PRIORITY = dict(SETTINGS.power_priority_tiers)
 
 
 @dataclass
@@ -55,7 +51,7 @@ class SimulationEngine:
         self.server_sequence_id: int = 0
         self.world_state: dict = {
             "world": {"width": width, "height": height},
-            "power": {"mode": "global_network"},
+            "power": {"mode": "topology_aware_networks"},
             "power_state": {
                 "generation": 0.0,
                 "demand": 0.0,
@@ -64,6 +60,7 @@ class SimulationEngine:
                 "powered_consumers": [],
                 "unpowered_consumers": [],
                 "disabled_priorities": [],
+                "networks": [],
             },
             "population": 0,
             "grid": [[TILE_FLOOR for _ in range(width)] for _ in range(height)],
@@ -488,12 +485,57 @@ class SimulationEngine:
 
     def _update_power(self) -> None:
         machines = self.world_state["machines"]
+        machines_by_network: dict[str, list[str]] = {}
+        for key in sorted(machines.keys()):
+            network_id = self._power_network_id(key)
+            machines_by_network.setdefault(network_id, []).append(key)
+
+        generation = 0.0
+        demand = 0.0
+        battery_discharge = 0.0
+        battery_charge = 0.0
+        powered_consumers: list[str] = []
+        unpowered_consumers: list[str] = []
+        disabled_priorities: set[int] = set()
+        network_states: list[dict] = []
+
+        for network_id in sorted(machines_by_network.keys()):
+            network_machine_keys = machines_by_network[network_id]
+            result = self._update_power_for_network(network_id, network_machine_keys)
+            generation += result["generation"]
+            demand += result["demand"]
+            battery_discharge += result["battery_discharge"]
+            battery_charge += result["battery_charge"]
+            powered_consumers.extend(result["powered_consumers"])
+            unpowered_consumers.extend(result["unpowered_consumers"])
+            disabled_priorities.update(result["disabled_priorities"])
+            network_states.append(result)
+
+        self.world_state["power_state"] = {
+            "generation": round(generation, 3),
+            "demand": round(demand, 3),
+            "battery_discharge": round(battery_discharge, 3),
+            "battery_charge": round(battery_charge, 3),
+            "powered_consumers": sorted(powered_consumers),
+            "unpowered_consumers": sorted(unpowered_consumers),
+            "disabled_priorities": sorted(disabled_priorities),
+            "networks": network_states,
+        }
+
+    def _power_network_id(self, machine_key: str) -> str:
+        comp_id = self.world_state.get("compartment_index", {}).get(machine_key)
+        if comp_id is not None:
+            return f"compartment:{int(comp_id)}"
+        return f"isolated:{machine_key}"
+
+    def _update_power_for_network(self, network_id: str, machine_keys: list[str]) -> dict:
+        machines = self.world_state["machines"]
         generation = 0.0
         demand = 0.0
         consumers: list[tuple[str, int, float]] = []
         battery_keys: list[str] = []
 
-        for key in sorted(machines.keys()):
+        for key in machine_keys:
             machine = machines[key]
             if not isinstance(machine, dict) or not machine.get("enabled", True):
                 continue
@@ -534,7 +576,6 @@ class SimulationEngine:
                 unpowered_consumers.append(key)
                 disabled_priorities.add(priority)
 
-        # charge batteries with surplus after serving powered consumers
         battery_charge = 0.0
         for key in battery_keys:
             if total_available <= 0:
@@ -551,13 +592,14 @@ class SimulationEngine:
             battery_charge += gain
             total_available -= gain
 
-        self.world_state["power_state"] = {
+        return {
+            "network_id": network_id,
             "generation": round(generation, 3),
             "demand": round(demand, 3),
             "battery_discharge": round(battery_discharge, 3),
             "battery_charge": round(battery_charge, 3),
-            "powered_consumers": powered_consumers,
-            "unpowered_consumers": unpowered_consumers,
+            "powered_consumers": sorted(powered_consumers),
+            "unpowered_consumers": sorted(unpowered_consumers),
             "disabled_priorities": sorted(disabled_priorities),
         }
 

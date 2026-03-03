@@ -83,7 +83,7 @@
 
 ### Phase 3B (in progress)
 - Expand machine classes and tier policy from constants docs.
-- Add topology-aware power graph recalculation (currently global model).
+- Added topology-aware power-network segmentation by connected compartments. ✅
 - Added power-failure/recovery markers in protocol deltas. ✅
 
 **Exit criteria:** deficits consistently disable lower tiers first and recover deterministically.

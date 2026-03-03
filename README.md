@@ -138,14 +138,14 @@ See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.
 
 ## Phase 3 progress
 
-Phase 3A is implemented and Phase 3B is in progress: global power + load-shedding + oxygen-generator power gating are live, and `power_event` markers now appear in `delta_tick.entity_changes`. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.
+Phase 3A is implemented and Phase 3B is in progress: topology-aware power-network segmentation, global observability rollups, load-shedding, oxygen-generator power gating, and `power_event` markers in `delta_tick.entity_changes` are live. See `docs/phase3/PHASE3_SPLIT_PLAN.md`.
 
 
 ## Phase 3 manual testing
 
 1. Connect websocket: `wscat -c ws://127.0.0.1:8000/ws`.
 2. Build a powered consumer (`OxygenGenerator`) and a lower-priority consumer (`Light`).
-3. Build limited generation (`SolarPanel`) and verify `unpowered_consumers`/`disabled_priorities` in `/world.world.power_state`.
+3. Build limited generation (`SolarPanel`) and verify `unpowered_consumers`/`disabled_priorities` in `/world.world.power_state` and inspect per-network entries in `power_state.networks`.
 4. Add `Battery` and verify `battery_discharge > 0` and battery `stored` decreases when bridging deficit.
 5. Add `Reactor` and verify consumers recover and oxygen generation resumes.
 6. Observe websocket `delta_tick.entity_changes` for `power_event` entries (`brownout_started`, `blackout_started`, `power_recovered`).

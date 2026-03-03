@@ -379,6 +379,7 @@ def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
             for x in range(50):
                 engine.world_state["grid"][y][x] = "Wall"
         engine.world_state["grid"][10][10] = "Floor"
+        engine.world_state["grid"][10][11] = "Floor"
         engine._recompute_compartments()
 
         only_compartment = engine.world_state["compartments"][0]
@@ -390,7 +391,7 @@ def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
             "rate_per_tick": 5.0,
             "consume_kw": 2.0,
         }
-        engine.world_state["machines"]["0,0"] = {
+        engine.world_state["machines"]["11,10"] = {
             "type": "Reactor",
             "enabled": True,
             "generation_kw": 8.0,
@@ -505,6 +506,7 @@ def test_oxygen_generator_needs_power_to_produce_oxygen() -> None:
             for x in range(50):
                 engine.world_state["grid"][y][x] = "Wall"
         engine.world_state["grid"][10][10] = "Floor"
+        engine.world_state["grid"][10][11] = "Floor"
         engine._recompute_compartments()
         engine.world_state["compartments"][0]["oxygen_percent"] = 40.0
 
@@ -516,7 +518,7 @@ def test_oxygen_generator_needs_power_to_produce_oxygen() -> None:
         engine._update_oxygen()
         without_power = engine.world_state["compartments"][0]["oxygen_percent"]
 
-        engine.world_state["machines"]["0,0"] = {"type": "Reactor", "enabled": True, "generation_kw": 10.0}
+        engine.world_state["machines"]["11,10"] = {"type": "Reactor", "enabled": True, "generation_kw": 10.0}
         engine._update_power()
         engine._update_oxygen()
         with_power = engine.world_state["compartments"][0]["oxygen_percent"]
@@ -576,6 +578,35 @@ def test_reseal_after_breach_stabilizes_oxygen() -> None:
 
     asyncio.run(run())
 
+
+
+def test_power_topology_does_not_share_between_disconnected_compartments() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        for y in range(50):
+            for x in range(50):
+                engine.world_state["grid"][y][x] = "Wall"
+
+        engine.world_state["grid"][10][10] = "Floor"
+        engine.world_state["grid"][10][11] = "Floor"
+        engine.world_state["grid"][20][20] = "Floor"
+        engine.world_state["grid"][20][21] = "Floor"
+        engine._recompute_compartments()
+
+        engine.world_state["machines"] = {
+            "10,10": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 3.0, "consume_kw": 2.0},
+            "11,10": {"type": "Reactor", "enabled": True, "generation_kw": 6.0},
+            "20,20": {"type": "Light", "enabled": True, "consume_kw": 1.0},
+        }
+
+        engine._update_power()
+        state = engine.world_state["power_state"]
+
+        assert "10,10" in state["powered_consumers"]
+        assert "20,20" in state["unpowered_consumers"]
+        assert any(n["network_id"].startswith("compartment:") for n in state["networks"])
+
+    asyncio.run(run())
 
 def test_power_events_emitted_for_brownout_and_recovery() -> None:
     async def run() -> None:
