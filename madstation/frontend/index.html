@@ -169,25 +169,48 @@
       return 'vacuum';
     }
 
+    function normalizeNpcList(rawNpcs) {
+      if (Array.isArray(rawNpcs)) return rawNpcs;
+      if (rawNpcs && typeof rawNpcs === 'object') return Object.values(rawNpcs);
+      return [];
+    }
+
+    function normalizeGrid(rawGrid) {
+      if (!Array.isArray(rawGrid)) return [];
+      if (rawGrid.length === 0) return [];
+      if (Array.isArray(rawGrid[0])) return rawGrid;
+      if (typeof rawGrid[0] === 'string') {
+        return rawGrid.map((row) => String(row).split(''));
+      }
+      return [];
+    }
+
     async function refreshWorld() {
       const resp = await fetch('/world');
       const payload = await resp.json();
       const world = payload.world;
       tickEl.textContent = `tick: ${payload.tick}`;
 
-      const npcByPos = new Set((world.npcs || [])
+      const grid = normalizeGrid(world.grid);
+      if (!grid.length) {
+        gridEl.innerHTML = '<div class="muted">No grid data available yet.</div>';
+        return;
+      }
+
+      const npcByPos = new Set(normalizeNpcList(world.npcs)
         .filter((n) => n && n.alive !== false)
         .map((n) => `${n.x},${n.y}`));
 
       const cells = [];
-      for (let y = 0; y < world.grid.length; y++) {
-        const row = world.grid[y];
+      for (let y = 0; y < grid.length; y++) {
+        const row = grid[y];
         for (let x = 0; x < row.length; x++) {
           const cls = tileClass(row[x]);
           const npc = npcByPos.has(`${x},${y}`) ? ' npc' : '';
           cells.push(`<div class="cell ${cls}${npc}" title="${x},${y} ${row[x]}"></div>`);
         }
       }
+      gridEl.style.gridTemplateColumns = `repeat(${grid[0].length}, 11px)`;
       gridEl.innerHTML = cells.join('');
     }
 
@@ -235,8 +258,8 @@
       ws.onmessage = (ev) => {
         const data = JSON.parse(ev.data);
         if (data.type === 'delta_tick' || data.type === 'snapshot_full') {
-          refreshWorld();
-          refreshStatus();
+          refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+          refreshStatus().catch((err) => appendLog({ status_refresh_error: String(err) }));
         }
         if (data.result) appendLog(data);
       };
@@ -270,8 +293,8 @@
     });
 
     connectWs();
-    refreshWorld();
-    refreshStatus();
+    refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+    refreshStatus().catch((err) => appendLog({ status_refresh_error: String(err) }));
     setInterval(refreshStatus, 1000);
   </script>
 </body>
