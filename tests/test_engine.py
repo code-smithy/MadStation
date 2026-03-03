@@ -525,3 +525,53 @@ def test_oxygen_generator_needs_power_to_produce_oxygen() -> None:
         assert with_power > without_power
 
     asyncio.run(run())
+
+
+def test_reseal_after_breach_stabilizes_oxygen() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session_id = await engine.connect(ws)
+
+        # 1) breach
+        await engine.enqueue_command(
+            session_id,
+            ClientCommand(client_command_id="reseal-breach", type=CommandType.DECONSTRUCT, payload={"x": 0, "y": 0}),
+        )
+        await engine._execute_tick()
+
+        oxygen_after_breach = engine.world_state["compartments"][0]["oxygen_percent"]
+        await engine._execute_tick()
+        oxygen_after_second_tick = engine.world_state["compartments"][0]["oxygen_percent"]
+        assert oxygen_after_second_tick < oxygen_after_breach
+
+        # 2) reseal with floor
+        engine.last_action_at.pop(session_id, None)
+        await engine.enqueue_command(
+            session_id,
+            ClientCommand(
+                client_command_id="reseal-close",
+                type=CommandType.BUILD,
+                payload={"x": 0, "y": 0, "tile_type": "Floor"},
+            ),
+        )
+        await engine._execute_tick()
+        oxygen_after_reseal = engine.world_state["compartments"][0]["oxygen_percent"]
+
+        # 3) with no generators, oxygen should stabilize (not keep leaking)
+        await engine._execute_tick()
+        oxygen_stable_1 = engine.world_state["compartments"][0]["oxygen_percent"]
+        await engine._execute_tick()
+        oxygen_stable_2 = engine.world_state["compartments"][0]["oxygen_percent"]
+
+        assert oxygen_stable_1 == oxygen_after_reseal
+        assert oxygen_stable_2 == oxygen_after_reseal
+
+        # delta should include the reseal tile change
+        deltas = [m for m in ws.messages if m.get("type") == "delta_tick"]
+        assert any(
+            any(change.get("x") == 0 and change.get("y") == 0 and change.get("after") == "Floor" for change in d["tile_changes"])
+            for d in deltas
+        )
+
+    asyncio.run(run())

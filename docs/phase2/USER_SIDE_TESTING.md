@@ -92,3 +92,27 @@ Send a build command with machine payload:
 Then verify in `/world`:
 - `world.machines["12,12"]` exists with `type: "OxygenGenerator"`,
 - compartment oxygen around that tile trends upward over ticks (bounded at 100).
+
+
+## 9) Breach then reseal stabilization test
+
+This matches your exact expectation: if you breach with vacuum and later close it again, pressure/oxygen should stop falling and stabilize (unless other active leaks exist).
+
+1. Breach an edge tile:
+
+```json
+{"client_command_id":"seal-1","type":"Deconstruct","payload":{"x":0,"y":0}}
+```
+
+2. Wait ~2-3 ticks and confirm oxygen/pressure is dropping in `/world.world.compartments`.
+
+3. Reseal the same tile:
+
+```json
+{"client_command_id":"seal-2","type":"Build","payload":{"x":0,"y":0,"tile_type":"Floor"}}
+```
+
+4. Wait ~2-3 ticks and re-check `/world.world.compartments`:
+   - oxygen/pressure should no longer continue dropping from that breach (stabilizes).
+
+If it still drops, there is another active leak path (another vacuum boundary).
