@@ -11,6 +11,7 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'MadStation Frontend MVP' in body
         assert 'Send Build' in body
         assert 'ws://127.0.0.1:8000/ws' in body
+        assert 'NPC' in body
 
         health_payload = await health()
         assert health_payload == {'status': 'ok'}

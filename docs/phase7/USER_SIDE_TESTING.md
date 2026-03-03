@@ -9,7 +9,7 @@ Use this checklist to validate the frontend MVP.
 
 ## 1) Load + connection
 
-1. Open `/` and confirm the page renders with grid, status, controls, and event log.
+1. Open `/` and confirm the page renders with grid, status, controls, event log, and tile legend.
 2. Confirm websocket connection indicator transitions to connected.
 3. Confirm tick/status values refresh over time.
 
@@ -42,3 +42,10 @@ Use this checklist to validate the frontend MVP.
 - If WS remains disconnected, check the displayed `ws:` target in the header.
 - Retry using query override: `/?ws=ws://127.0.0.1:8000/ws` (or your explicit host/port).
 - Ensure server logs show websocket upgrade attempts on `/ws`.
+
+
+## Visual readability checks
+
+1. Confirm tile colors are distinct for Vacuum/Floor/Wall/Door/Airlock/Window.
+2. Confirm NPCs appear as red markers over tiles.
+3. Hover tiles and verify coordinate/type tooltip appears.

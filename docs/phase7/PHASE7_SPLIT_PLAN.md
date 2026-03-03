@@ -8,6 +8,7 @@ Phase 7 focuses on a minimal operator-facing frontend first, then richer UX poli
 - Added basic grid rendering, status panel, event log, and command controls (Build/Deconstruct/CreateWorkOrder). ✅
 - Wired websocket snapshot/delta refresh flow into the UI for near-real-time updates. ✅
 - Added WebSocket fallback endpoint cycling (`location.host`, `127.0.0.1`, `localhost`) with visible connection target. ✅
+- Added color-coded tile rendering and NPC overlay markers plus legend for immediate map readability. ✅
 
 ## Phase 7B (planned)
 
