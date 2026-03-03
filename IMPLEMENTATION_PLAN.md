@@ -59,7 +59,7 @@
 
 **Exit criteria:** 5 clients can connect and receive deterministic tick updates. ✅ Met (see `docs/phase1/PHASE1_COMPLETION.md`).
 
-## Phase 2 — World + Core Environment (Days 4–7) 🚧 In Progress
+## Phase 2 — World + Core Environment (Days 4–7) ✅ Completed
 
 ### Phase 2A (completed in current iteration)
 - Implemented 50x50 structural grid and structural edits via `Build`/`Deconstruct`.
@@ -67,14 +67,14 @@
 - Implemented compartment-level oxygen leak model from vacuum exposure.
 - Added tile mutation deltas and `compartment_count` runtime observability.
 
-### Phase 2B (in progress)
+### Phase 2B (completed)
 - Implemented diffusion behavior via explicit open-door boundaries. ✅
 - Implemented deterministic door auto-open/close baseline logic. ✅
 - Implemented oxygen generation hooks for machine integration. ✅
 
-**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; Phase 2 closure candidate; remaining work is mostly invariants/protocol polish.)
+**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. ✅ Met.
 
-## Phase 3 — Power + Priority Load Shedding (Days 8–10) 🚧 In Progress
+## Phase 3 — Power + Priority Load Shedding (Days 8–10) ✅ Completed
 
 ### Phase 3A (completed in current iteration)
 - Implemented global power model with generation, battery discharge/charge, and tiered allocation.
@@ -83,23 +83,29 @@
 
 ### Phase 3B (in progress)
 - Expand machine classes and tier policy from constants docs.
-- Add topology-aware power graph recalculation (currently global model).
+- Added topology-aware power-network segmentation by connected compartments. ✅
 - Added power-failure/recovery markers in protocol deltas. ✅
 
 **Exit criteria:** deficits consistently disable lower tiers first and recover deterministically.
 
-## Phase 4 — NPC Core + Permanent Death (Days 11–15)
+## Phase 4 — NPC Core + Permanent Death (Days 11–15) ✅ Completed
 
-- Add 10 named persistent NPCs.
-- Implement pathfinding with diagonal movement.
-- Add speed attribute per NPC in `[1,4]` (default centered at 2).
-- Needs/damage/death pipeline:
-  - survival checks first,
-  - personality modifiers second,
-  - permanent death records.
-- Spawn `DisposeBody` work order on death.
+### Phase 4A (started in current iteration)
+- Added 10 named persistent NPCs. ✅
+- Added speed attributes bounded to `[1,4]`. ✅
+- Added deterministic diagonal survival movement baseline (full pathfinding still pending). ✅
+- Added suffocation damage/death handling with permanent death records. ✅
+- Added automatic `DisposeBody` work-order creation on death. ✅
+- Added deterministic DisposeBody work-order assignment/execution baseline. ✅
+- Added baseline needs/personality layer with survival-first enforcement. ✅
 
-**Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp.
+### Phase 4B (completed)
+- Added deterministic oxygen-aware path search baseline for multi-step routing. ✅
+- Upgraded task-aware path selection/execution for `DisposeBody` with deterministic nearest-reachable assignment and re-queue on unreachable paths. ✅
+- Expanded baseline needs/personality stack while preserving survival-first constraints. ✅
+- Enriched death/body lifecycle metadata and disposal-state integration. ✅
+
+**Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp. ✅ Met.
 
 ## Phase 5 — Work Orders + Physical Logistics Loop (Days 16–21)
 
@@ -194,3 +200,7 @@ Phase 2 split details are tracked in `docs/phase2/PHASE2_SPLIT_PLAN.md`.
 
 
 Phase 3 split details are tracked in `docs/phase3/PHASE3_SPLIT_PLAN.md`.
+
+
+
+Phase 4 split details are tracked in `docs/phase4/PHASE4_SPLIT_PLAN.md`.
