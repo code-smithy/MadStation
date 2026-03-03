@@ -161,16 +161,17 @@
 
 **Exit criteria:** restart resumes world safely within snapshot tolerance. ✅ Met.
 
-## Phase 7 — Frontend MVP (parallel, correctness-first)
+## Phase 7 — Frontend MVP (parallel, correctness-first) 🚧 In Progress
 
-- Implement simulation-first UI:
-  - grid view,
-  - edit controls,
-  - work order controls,
-  - population counter,
-  - event feed,
-  - NPC/tile inspectors.
-- Keep rendering simple and fast; defer aesthetics.
+### Phase 7A (implemented in this iteration)
+- Added simulation-first web UI entry page (`GET /`). ✅
+- Added grid view, edit controls, and basic work-order controls. ✅
+- Added live status panel + event log with websocket-driven updates. ✅
+
+### Phase 7B (planned)
+- Add tile/NPC inspectors and machine quick-actions.
+- Add power/oxygen/compartment overlays and event filtering ergonomics.
+- Improve work-order forms for richer metadata entry.
 
 **Exit criteria:** operators can reliably induce and observe failure cascades.
 
@@ -236,3 +237,5 @@ Phase 4 split details are tracked in `docs/phase4/PHASE4_SPLIT_PLAN.md`.
 Phase 5 split details are tracked in `docs/phase5/PHASE5_SPLIT_PLAN.md`.
 
 Phase 6 split details are tracked in `docs/phase6/PHASE6_SPLIT_PLAN.md`.
+
+Phase 7 split details are tracked in `docs/phase7/PHASE7_SPLIT_PLAN.md`.

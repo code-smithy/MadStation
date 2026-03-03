@@ -1,10 +1,16 @@
 import asyncio
 
-from madstation.app import health, status, websocket_usage, world
+from madstation.app import frontend_index, health, status, websocket_usage, world
 
 
 def test_health_status_world_and_ws_usage_handlers() -> None:
     async def run() -> None:
+        page = await frontend_index()
+        assert page.status_code == 200
+        body = page.body.decode('utf-8')
+        assert 'MadStation Frontend MVP' in body
+        assert 'Send Build' in body
+
         health_payload = await health()
         assert health_payload == {'status': 'ok'}
 
