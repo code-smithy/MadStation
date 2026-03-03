@@ -1,23 +1,21 @@
 # Phase 2 Remaining Work (After 2A)
 
-## 2B Engineering Tasks
+## Completed in this iteration
 
-1. **Door state system**
-   - Track door open/closed state separately from tile type.
-   - Introduce deterministic auto-open/auto-close behavior.
+- Deterministic door state model with auto-open/auto-close baseline behavior.
+- Diffusion between compartments through open-door boundaries.
+- Added tests for closed-door split behavior, open-door diffusion, and door auto-state transitions.
 
-2. **Diffusion model**
-   - Add oxygen diffusion between connected compartments through open door boundaries.
-   - Keep leak-to-vacuum and diffusion as distinct terms in oxygen update.
+## Remaining 2B/Phase-3-facing Tasks
 
-3. **Environment hooks for life support machines**
+1. **Environment hooks for life support machines**
    - Define oxygen generation injection points at compartment level.
    - Keep implementation deterministic and tick-order-stable.
 
-4. **Topology/compartment invariants**
+2. **Topology/compartment invariants**
    - Add tests for split/merge transitions and oxygen conservation constraints.
 
-5. **Protocol and UI-support data**
+3. **Protocol and UI-support data**
    - Include optional compartment-change summaries in deltas for easier client rendering/debug.
 
 ## Suggested test additions

@@ -67,12 +67,12 @@
 - Implemented compartment-level oxygen leak model from vacuum exposure.
 - Added tile mutation deltas and `compartment_count` runtime observability.
 
-### Phase 2B (next)
-- Implement diffusion behavior via explicit open boundaries (door-driven).
-- Implement door auto-open/close baseline logic.
-- Add oxygen generation hooks for machine integration.
+### Phase 2B (in progress)
+- Implemented diffusion behavior via explicit open-door boundaries. ✅
+- Implemented deterministic door auto-open/close baseline logic. ✅
+- Add oxygen generation hooks for machine integration. (pending)
 
-**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (Partially met in 2A; finalized after 2B door/diffusion hooks.)
+**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; finalize after oxygen generation hooks.)
 
 ## Phase 3 — Power + Priority Load Shedding (Days 8–10)
 

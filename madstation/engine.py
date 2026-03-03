@@ -20,7 +20,7 @@ TILE_WINDOW = "Window"
 
 ALL_TILE_TYPES = {TILE_VACUUM, TILE_FLOOR, TILE_WALL, TILE_DOOR, TILE_AIRLOCK, TILE_WINDOW}
 WALKABLE_TILES = {TILE_FLOOR, TILE_DOOR, TILE_AIRLOCK}
-SEALED_TILES = {TILE_WALL, TILE_WINDOW}
+COMPARTMENT_FILL_TILES = {TILE_FLOOR, TILE_AIRLOCK}
 
 
 @dataclass
@@ -45,6 +45,7 @@ class SimulationEngine:
             "power": {"mode": "global_network"},
             "population": 0,
             "grid": [[TILE_FLOOR for _ in range(width)] for _ in range(height)],
+            "door_states": {},
             "compartments": [],
             "compartment_index": {},
         }
@@ -110,12 +111,16 @@ class SimulationEngine:
         }
 
     def runtime_status(self) -> dict[str, int]:
+        open_door_count = sum(
+            1 for value in self.world_state["door_states"].values() if isinstance(value, dict) and value.get("open", False)
+        )
         return {
             "tick": self.tick,
             "server_sequence_id": self.server_sequence_id,
             "connected_clients": len(self.connections),
             "queued_commands": self.command_queue.qsize(),
             "compartment_count": len(self.world_state["compartments"]),
+            "open_door_count": open_door_count,
         }
 
     def stop(self) -> None:
@@ -174,6 +179,11 @@ class SimulationEngine:
             )
             self.command_ack_cache[pending.session_id][pending.command.client_command_id] = ack
             await self._safe_send(pending.session_id, ack.model_dump())
+
+        door_changes = self._auto_update_doors()
+        if door_changes:
+            tile_changes.extend(door_changes)
+            topology_changed = True
 
         if topology_changed:
             self._recompute_compartments()
@@ -247,6 +257,7 @@ class SimulationEngine:
     def _apply_structural_command(self, command: ClientCommand) -> tuple[dict | None, bool]:
         x = command.payload["x"]
         y = command.payload["y"]
+        key = self._xy_key(x, y)
         before = self.world_state["grid"][y][x]
 
         if command.type is CommandType.BUILD:
@@ -258,7 +269,52 @@ class SimulationEngine:
             return None, False
 
         self.world_state["grid"][y][x] = after
+        if after == TILE_DOOR:
+            self.world_state["door_states"][key] = {"open": False}
+        elif key in self.world_state["door_states"]:
+            self.world_state["door_states"].pop(key, None)
+
         return {"x": x, "y": y, "before": before, "after": after}, True
+
+    def _auto_update_doors(self) -> list[dict]:
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        door_changes: list[dict] = []
+
+        for key, state in list(self.world_state["door_states"].items()):
+            x_str, y_str = key.split(",")
+            x, y = int(x_str), int(y_str)
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            if self.world_state["grid"][y][x] != TILE_DOOR:
+                self.world_state["door_states"].pop(key, None)
+                continue
+
+            before_open = bool(state.get("open", False))
+            should_open = self._door_should_open(x, y)
+            if before_open != should_open:
+                self.world_state["door_states"][key] = {"open": should_open}
+                door_changes.append(
+                    {
+                        "x": x,
+                        "y": y,
+                        "type": "door_state",
+                        "door_open_before": before_open,
+                        "door_open_after": should_open,
+                    }
+                )
+
+        return door_changes
+
+    def _door_should_open(self, x: int, y: int) -> bool:
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        interior_neighbors = 0
+        for nx, ny in self._neighbors4(x, y, width, height):
+            tile = self.world_state["grid"][ny][nx]
+            if tile in COMPARTMENT_FILL_TILES:
+                interior_neighbors += 1
+        return interior_neighbors >= 2
 
     def _recompute_compartments(self) -> None:
         grid = self.world_state["grid"]
@@ -274,7 +330,7 @@ class SimulationEngine:
         old_index = self.world_state.get("compartment_index", {})
 
         def oxygen_for_tile(tx: int, ty: int) -> float:
-            old_id = old_index.get(f"{tx},{ty}")
+            old_id = old_index.get(self._xy_key(tx, ty))
             if old_id is None:
                 return 100.0
             return old_map.get(int(old_id), 100.0)
@@ -284,7 +340,7 @@ class SimulationEngine:
             for x in range(width):
                 if (x, y) in visited:
                     continue
-                if grid[y][x] not in WALKABLE_TILES:
+                if grid[y][x] not in COMPARTMENT_FILL_TILES:
                     continue
 
                 queue = [(x, y)]
@@ -299,7 +355,7 @@ class SimulationEngine:
                     for nx, ny in self._neighbors4(cx, cy, width, height):
                         if (nx, ny) in visited:
                             continue
-                        if grid[ny][nx] not in WALKABLE_TILES:
+                        if grid[ny][nx] not in COMPARTMENT_FILL_TILES:
                             continue
                         visited.add((nx, ny))
                         queue.append((nx, ny))
@@ -317,7 +373,7 @@ class SimulationEngine:
                     }
                 )
                 for tx, ty in tiles:
-                    compartment_index[f"{tx},{ty}"] = comp_id
+                    compartment_index[self._xy_key(tx, ty)] = comp_id
                 comp_id += 1
 
         self.world_state["compartments"] = compartments
@@ -328,10 +384,14 @@ class SimulationEngine:
         width = self.world_state["world"]["width"]
         height = self.world_state["world"]["height"]
         index = self.world_state["compartment_index"]
+        compartments = self.world_state["compartments"]
 
-        leak_counts: dict[int, int] = {int(c["id"]): 0 for c in self.world_state["compartments"]}
-        tile_counts: dict[int, int] = {int(c["id"]): int(c["tile_count"]) for c in self.world_state["compartments"]}
+        leak_counts: dict[int, int] = {int(c["id"]): 0 for c in compartments}
+        tile_counts: dict[int, int] = {int(c["id"]): int(c["tile_count"]) for c in compartments}
+        oxygen_values: dict[int, float] = {int(c["id"]): float(c["oxygen_percent"]) for c in compartments}
+        oxygen_delta: dict[int, float] = {int(c["id"]): 0.0 for c in compartments}
 
+        # direct leak to vacuum from compartment tiles
         for key, comp_id in index.items():
             x_str, y_str = key.split(",")
             x, y = int(x_str), int(y_str)
@@ -339,12 +399,42 @@ class SimulationEngine:
                 if grid[ny][nx] == TILE_VACUUM:
                     leak_counts[int(comp_id)] += 1
 
-        for compartment in self.world_state["compartments"]:
+        # door-driven diffusion/leak
+        for key, state in self.world_state["door_states"].items():
+            if not state.get("open", False):
+                continue
+            x_str, y_str = key.split(",")
+            x, y = int(x_str), int(y_str)
+            adjacent_comp_ids: list[int] = []
+            has_vacuum_neighbor = False
+
+            for nx, ny in self._neighbors4(x, y, width, height):
+                neighbor_tile = grid[ny][nx]
+                if neighbor_tile == TILE_VACUUM:
+                    has_vacuum_neighbor = True
+                comp = index.get(self._xy_key(nx, ny))
+                if comp is not None:
+                    adjacent_comp_ids.append(int(comp))
+
+            unique_adjacent = sorted(set(adjacent_comp_ids))
+            if len(unique_adjacent) >= 2:
+                left = unique_adjacent[0]
+                right = unique_adjacent[1]
+                gradient = oxygen_values[left] - oxygen_values[right]
+                transfer = max(-3.0, min(3.0, gradient * 0.15))
+                oxygen_delta[left] -= transfer
+                oxygen_delta[right] += transfer
+
+            if has_vacuum_neighbor and len(unique_adjacent) == 1:
+                leak_counts[unique_adjacent[0]] += 1
+
+        for compartment in compartments:
             comp_id = int(compartment["id"])
             tile_count = max(1, tile_counts[comp_id])
             exposure_ratio = leak_counts[comp_id] / tile_count
             leak_rate = min(10.0, exposure_ratio * 200.0)
-            next_oxygen = max(0.0, float(compartment["oxygen_percent"]) - leak_rate)
+            next_oxygen = oxygen_values[comp_id] + oxygen_delta[comp_id] - leak_rate
+            next_oxygen = max(0.0, min(100.0, next_oxygen))
             compartment["oxygen_percent"] = round(next_oxygen, 2)
             compartment["pressure"] = round(next_oxygen / 100, 3)
 
@@ -356,3 +446,7 @@ class SimulationEngine:
             if 0 <= nx < width and 0 <= ny < height:
                 points.append((nx, ny))
         return points
+
+    @staticmethod
+    def _xy_key(x: int, y: int) -> str:
+        return f"{x},{y}"

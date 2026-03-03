@@ -71,3 +71,11 @@ Expected second ack: `THROTTLED`.
 
 - Compartments and oxygen leak are implemented.
 - Door auto-open/close and explicit door diffusion behavior are planned for Phase 2B.
+
+
+## 7) Door auto-state + diffusion check
+
+1. Create two nearby floor pockets with a door tile between them.
+2. Confirm door state appears in `/world.world.door_states`.
+3. Observe `door_state` entries inside `delta_tick.tile_changes` when the door auto-opens/closes.
+4. With differing oxygen values between pockets, keep door open and confirm values trend toward each other over ticks.

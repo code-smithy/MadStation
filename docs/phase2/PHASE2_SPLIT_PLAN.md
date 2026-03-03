@@ -13,13 +13,13 @@ Phase 2 is split into two implementation slices to keep risk low and preserve de
 - Delta payload now includes tile mutation records for applied structural commands.
 - Runtime status now includes `compartment_count` for observability.
 
-## Phase 2B (next step)
+## Phase 2B (in progress)
 
-- Door state model (`open/closed`) with auto-open/close baseline rules.
-- Explicit diffusion between connected/open boundaries.
+- Door state model (`open/closed`) with deterministic auto-open/close baseline rules. ✅
+- Explicit diffusion between compartments through open door boundaries. ✅
 - Exterior/interior zoning improvements (station grid + asteroid field semantics).
-- Machine hooks for oxygen generation into compartment model.
-- Additional invariants and replay tests for compartment transitions.
+- Machine hooks for oxygen generation into compartment model. (pending)
+- Additional invariants and replay tests for compartment transitions. (partial)
 
 ## Why split
 

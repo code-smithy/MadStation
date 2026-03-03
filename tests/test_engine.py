@@ -266,3 +266,84 @@ def test_five_clients_receive_same_deterministic_tick_delta() -> None:
         assert command_counts == {0}
 
     asyncio.run(run())
+
+
+def test_closed_door_splits_compartments() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+
+        # carve tiny deterministic setup
+        for y in range(50):
+            for x in range(50):
+                engine.world_state["grid"][y][x] = "Wall"
+
+        engine.world_state["grid"][1][1] = "Floor"
+        engine.world_state["grid"][1][3] = "Floor"
+        engine.world_state["grid"][1][2] = "Door"
+        engine.world_state["door_states"]["2,1"] = {"open": False}
+
+        engine._recompute_compartments()
+
+        assert len(engine.world_state["compartments"]) == 2
+
+    asyncio.run(run())
+
+
+def test_open_door_diffuses_oxygen_between_compartments() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+
+        for y in range(50):
+            for x in range(50):
+                engine.world_state["grid"][y][x] = "Wall"
+
+        engine.world_state["grid"][1][1] = "Floor"
+        engine.world_state["grid"][1][3] = "Floor"
+        engine.world_state["grid"][1][2] = "Door"
+        engine.world_state["door_states"]["2,1"] = {"open": True}
+
+        engine._recompute_compartments()
+        left_id = int(engine.world_state["compartment_index"]["1,1"])
+        right_id = int(engine.world_state["compartment_index"]["3,1"])
+        assert left_id != right_id
+
+        for comp in engine.world_state["compartments"]:
+            if int(comp["id"]) == left_id:
+                comp["oxygen_percent"] = 100.0
+            if int(comp["id"]) == right_id:
+                comp["oxygen_percent"] = 0.0
+
+        engine._update_oxygen()
+
+        left_after = next(c["oxygen_percent"] for c in engine.world_state["compartments"] if int(c["id"]) == left_id)
+        right_after = next(c["oxygen_percent"] for c in engine.world_state["compartments"] if int(c["id"]) == right_id)
+
+        assert left_after < 100.0
+        assert right_after > 0.0
+
+    asyncio.run(run())
+
+
+def test_door_auto_open_close_generates_tile_changes() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session_id = await engine.connect(ws)
+
+        # build interior floor pair around a door location
+        await engine.enqueue_command(session_id, build_command("f-left", 9, 10, "Floor"))
+        await engine._execute_tick()
+        engine.last_action_at.pop(session_id, None)
+        await engine.enqueue_command(session_id, build_command("f-right", 11, 10, "Floor"))
+        await engine._execute_tick()
+        engine.last_action_at.pop(session_id, None)
+        await engine.enqueue_command(session_id, build_command("door", 10, 10, "Door"))
+        await engine._execute_tick()
+
+        door_state = engine.world_state["door_states"].get("10,10", {})
+        assert door_state.get("open") is True
+
+        deltas = [m for m in ws.messages if m.get("type") == "delta_tick"]
+        assert any(any(change.get("type") == "door_state" for change in d.get("tile_changes", [])) for d in deltas)
+
+    asyncio.run(run())

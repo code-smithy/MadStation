@@ -105,7 +105,7 @@ make test
 
 ## Phase 2 progress
 
-Phase 2 is being delivered in slices. See `docs/phase2/PHASE2_SPLIT_PLAN.md` for 2A/2B scope.
+Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffusion are now implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md` for current scope.
 
 
 ## User-side testing (manual)
@@ -125,6 +125,7 @@ Phase 2 is being delivered in slices. See `docs/phase2/PHASE2_SPLIT_PLAN.md` for
 {"client_command_id":"u2","type":"Deconstruct","payload":{"x":0,"y":0}}
 ```
 
-6. Watch `delta_tick.tile_changes` in websocket output and refresh `/world` to confirm tile mutations + compartment oxygen drift.
+6. Build a door between two floor tiles and watch `delta_tick.tile_changes` for `door_state` transitions.
+7. Refresh `/world` to confirm tile mutations + compartment oxygen drift/diffusion.
 
 See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.
