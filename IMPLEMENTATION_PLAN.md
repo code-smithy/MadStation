@@ -114,9 +114,9 @@
 - Added physical `items` and `storages` state scaffolding with inventory tracking. ✅
 - Added baseline `MineIce` -> auto `HaulItem` to storage foundation loop. ✅
 
-### Phase 5B (next)
+### Phase 5B (in progress)
 - Expand work-order schema and richer logistics command validation.
-- Implement refinery + oxygen-feed machine chain with physical transfer semantics.
+- Added initial refinement/feed chain baseline (`RefineIce` + `FeedOxygenGenerator`) with physical item handoff/consumption. ✅
 - Add race collision/replan behavior for shared logistics orders.
 
 **Exit criteria:** full life-support chain works end-to-end without teleportation.

@@ -15,10 +15,10 @@ Phase 5 is being split into foundational logistics first, then full life-support
   - `HaulItem` completion stores items into storage inventories.
 - Preserved deterministic ordering for assignment and completion side effects.
 
-## Phase 5B (next)
+## Phase 5B (in progress)
 
 - Expand work-order command schema and validation for richer item machine chains.
-- Add refinery transformation stage and oxygen-generator feed stage with physical item transfer.
+- Added initial refinement/feed stages with physical item transformation and consumption semantics (`RefineIce` -> `WaterUnit`, `FeedOxygenGenerator` consumes water). ✅
 - Add collision/replan behavior for competing NPCs on the same logistics chain.
 
 ## Exit target for Phase 5

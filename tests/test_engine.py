@@ -1264,7 +1264,7 @@ def test_phase5_foundation_mine_ice_creates_item_and_haul_order() -> None:
         {
             "id": "wo-mine-1",
             "work_type": "MineIce",
-https://github.com/code-smithy/MadStation/pull/27/conflict?name=tests%252Ftest_engine.py&ancestor_oid=d30e8e0eaedfd7af19a1aa0c54fbdfddd3c27d36&base_oid=59108e43729f19dd5793b6609c7a7e4446d09da3&head_oid=b97944e5c6cb643df8a1a7b70ceb2d23046c7268            "status": "Assigned",
+            "status": "Assigned",
             "location": {"x": 20, "y": 20},
             "created_tick": 1,
             "progress": 1,
@@ -1334,3 +1334,164 @@ def test_phase5_foundation_haul_item_stores_into_storage_inventory() -> None:
     assert item["holder_npc_id"] is None
     assert "item-1" in storage["inventory"]
     assert any(change.get("type") == "item_stored" for change in work_changes)
+
+
+def test_phase5b_refine_ice_consumes_ice_and_creates_water_and_haul() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-refiner",
+            "name": "Refiner",
+            "x": 19,
+            "y": 19,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-refine-1",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["items"] = [
+        {
+            "id": "item-ice-1",
+            "item_type": "IceChunk",
+            "location": {"x": 19, "y": 19},
+            "holder_npc_id": None,
+            "created_tick": 1,
+            "consumed": False,
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-refine-1",
+            "work_type": "RefineIce",
+            "status": "Assigned",
+            "location": {"x": 19, "y": 19},
+            "item_id": "item-ice-1",
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-refiner",
+        }
+    ]
+    engine.world_state["machines"] = {
+        "20,20": {"type": "OxygenGenerator", "enabled": True, "rate_per_tick": 2.0, "consume_kw": 2.0}
+    }
+
+    npc_changes, work_changes, _ = engine._update_npcs()
+
+    assert engine.world_state["items"][0]["consumed"] is True
+    assert any(item.get("item_type") == "WaterUnit" for item in engine.world_state["items"])
+    assert any(order.get("work_type") == "HaulItem" for order in engine.world_state["work_orders"])
+    assert any(change.get("type") == "item_created" and change.get("item_type") == "WaterUnit" for change in npc_changes)
+    assert any(change.get("type") == "work_order_created_auto" for change in work_changes)
+
+
+def test_phase5b_haul_water_creates_feed_order() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-water-hauler",
+            "name": "WaterHauler",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-haul-water",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["items"] = [
+        {
+            "id": "item-water-1",
+            "item_type": "WaterUnit",
+            "location": {"x": 20, "y": 20},
+            "holder_npc_id": "npc-water-hauler",
+            "created_tick": 1,
+            "consumed": False,
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-haul-water",
+            "work_type": "HaulItem",
+            "status": "Assigned",
+            "location": {"x": 20, "y": 20},
+            "destination": {"x": 20, "y": 20},
+            "item_id": "item-water-1",
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-water-hauler",
+        }
+    ]
+
+    _, work_changes, _ = engine._update_npcs()
+    assert any(order.get("work_type") == "FeedOxygenGenerator" for order in engine.world_state["work_orders"])
+    assert any(change.get("type") == "work_order_created_auto" for change in work_changes)
+
+
+def test_phase5b_feed_oxygen_generator_consumes_water_and_boosts_oxygen() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-feeder",
+            "name": "Feeder",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-feed-1",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["items"] = [
+        {
+            "id": "item-water-2",
+            "item_type": "WaterUnit",
+            "location": {"x": 20, "y": 20},
+            "holder_npc_id": None,
+            "created_tick": 1,
+            "consumed": False,
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-feed-1",
+            "work_type": "FeedOxygenGenerator",
+            "status": "Assigned",
+            "location": {"x": 20, "y": 20},
+            "item_id": "item-water-2",
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 1,
+            "assignee_npc_id": "npc-feeder",
+        }
+    ]
+
+    # ensure target tile has a compartment oxygen baseline
+    comp_id = engine.world_state["compartment_index"].get("20,20")
+    before_oxygen = None
+    if comp_id is not None:
+        for comp in engine.world_state["compartments"]:
+            if int(comp["id"]) == int(comp_id):
+                comp["oxygen_percent"] = 60.0
+                before_oxygen = 60.0
+                break
+
+    npc_changes, work_changes, _ = engine._update_npcs()
+
+    assert engine.world_state["items"][0]["consumed"] is True
+    assert any(change.get("type") == "item_consumed" for change in npc_changes)
+    assert any(change.get("type") == "work_order_completed" for change in work_changes)
+    if comp_id is not None and before_oxygen is not None:
+        after = next(comp for comp in engine.world_state["compartments"] if int(comp["id"]) == int(comp_id))["oxygen_percent"]
+        assert after > before_oxygen

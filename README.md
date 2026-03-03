@@ -174,4 +174,4 @@ See `docs/phase4/USER_SIDE_TESTING.md` for full operator checklist.
 
 ## Phase 5 progress
 
-Phase 5 has started with logistics foundation work: command-applied work-order creation, physical item/storage state scaffolding, and initial `MineIce` -> `HaulItem` storage flow. See `docs/phase5/PHASE5_SPLIT_PLAN.md`.
+Phase 5 is in progress with logistics + chain foundations: command-applied work-order creation, physical item/storage scaffolding, `MineIce` -> `HaulItem` storage flow, and initial `RefineIce`/`FeedOxygenGenerator` item transformation + consumption semantics. See `docs/phase5/PHASE5_SPLIT_PLAN.md`.

@@ -1056,6 +1056,80 @@ class SimulationEngine:
                 self._store_item_at_location(item)
                 work_order_changes.append({"type": "item_stored", "item_id": item["id"], "location": item["location"]})
 
+                # phase 5b chain hooks
+                if str(item.get("item_type")) == "IceChunk":
+                    refine_order = {
+                        "id": f"wo-refine-{item['id']}",
+                        "work_type": "RefineIce",
+                        "status": "Queued",
+                        "location": {"x": int(item["location"]["x"]), "y": int(item["location"]["y"] )},
+                        "item_id": item["id"],
+                        "created_tick": self.tick,
+                        "progress": 0,
+                        "required_progress": 2,
+                    }
+                    self.world_state.setdefault("work_orders", []).append(refine_order)
+                    work_order_changes.append({"type": "work_order_created_auto", "work_order": refine_order})
+                elif str(item.get("item_type")) == "WaterUnit":
+                    feed_order = {
+                        "id": f"wo-feed-{item['id']}",
+                        "work_type": "FeedOxygenGenerator",
+                        "status": "Queued",
+                        "location": {"x": int(item["location"]["x"]), "y": int(item["location"]["y"])},
+                        "item_id": item["id"],
+                        "created_tick": self.tick,
+                        "progress": 0,
+                        "required_progress": 1,
+                    }
+                    self.world_state.setdefault("work_orders", []).append(feed_order)
+                    work_order_changes.append({"type": "work_order_created_auto", "work_order": feed_order})
+        elif work_type == "RefineIce":
+            source_item = self._item_for_order_item(active_order)
+            if source_item is not None and not source_item.get("consumed", False):
+                source_item["consumed"] = True
+                source_item["consumed_tick"] = self.tick
+                water_id = f"item-water-{source_item['id']}-{self.tick}"
+                water_item = {
+                    "id": water_id,
+                    "item_type": "WaterUnit",
+                    "location": {"x": int(npc["x"]), "y": int(npc["y"])},
+                    "holder_npc_id": None,
+                    "created_tick": self.tick,
+                    "consumed": False,
+                }
+                self.world_state.setdefault("items", []).append(water_item)
+                npc_changes.append({"type": "item_created", "item_id": water_id, "item_type": "WaterUnit", "location": water_item["location"]})
+
+                destination = self._nearest_oxygen_generator_location(int(npc["x"]), int(npc["y"])) or self._nearest_storage_location(int(npc["x"]), int(npc["y"]))
+                if destination is not None:
+                    haul_order = {
+                        "id": f"wo-haul-{water_id}",
+                        "work_type": "HaulItem",
+                        "status": "Queued",
+                        "location": {"x": int(water_item["location"]["x"]), "y": int(water_item["location"]["y"])},
+                        "destination": destination,
+                        "item_id": water_id,
+                        "created_tick": self.tick,
+                        "progress": 0,
+                        "required_progress": 2,
+                    }
+                    self.world_state.setdefault("work_orders", []).append(haul_order)
+                    work_order_changes.append({"type": "work_order_created_auto", "work_order": haul_order})
+        elif work_type == "FeedOxygenGenerator":
+            water_item = self._item_for_order_item(active_order)
+            if water_item is not None and not water_item.get("consumed", False):
+                water_item["consumed"] = True
+                water_item["consumed_tick"] = self.tick
+                comp_id = self.world_state.get("compartment_index", {}).get(self._xy_key(int(npc["x"]), int(npc["y"])))
+                if comp_id is not None:
+                    for comp in self.world_state.get("compartments", []):
+                        if int(comp.get("id", -1)) != int(comp_id):
+                            continue
+                        comp["oxygen_percent"] = round(min(100.0, float(comp.get("oxygen_percent", 0.0)) + 2.0), 2)
+                        comp["pressure"] = round(float(comp["oxygen_percent"]) / 100, 3)
+                        break
+                npc_changes.append({"type": "item_consumed", "item_id": water_item["id"], "reason": "feed_oxygen_generator"})
+
         work_order_changes.append(
             {
                 "type": "work_order_completed",
@@ -1067,8 +1141,22 @@ class SimulationEngine:
 
     def _work_order_target(self, order: dict, npc: dict) -> tuple[int, int] | None:
         work_type = str(order.get("work_type", ""))
-        if work_type != "HaulItem":
+        if work_type not in {"HaulItem", "FeedOxygenGenerator"}:
             loc = order.get("location", {})
+            if isinstance(loc.get("x"), int) and isinstance(loc.get("y"), int):
+                return int(loc["x"]), int(loc["y"])
+            return None
+
+        if work_type == "FeedOxygenGenerator":
+            item = self._item_for_order_item(order)
+            if item is None:
+                return None
+            holder = item.get("holder_npc_id")
+            if holder == npc.get("id"):
+                destination = self._nearest_oxygen_generator_location(int(npc.get("x", 0)), int(npc.get("y", 0)))
+                if destination is not None:
+                    return int(destination["x"]), int(destination["y"])
+            loc = item.get("location", {})
             if isinstance(loc.get("x"), int) and isinstance(loc.get("y"), int):
                 return int(loc["x"]), int(loc["y"])
             return None
@@ -1130,7 +1218,7 @@ class SimulationEngine:
         for order in self.world_state.get("work_orders", []):
             if order.get("status") != "Queued":
                 continue
-            if order.get("work_type") not in {"DisposeBody", "MineIce", "HaulItem"}:
+            if order.get("work_type") not in {"DisposeBody", "MineIce", "HaulItem", "RefineIce", "FeedOxygenGenerator"}:
                 continue
             location = order.get("location", {})
             tx = location.get("x")
@@ -1349,6 +1437,34 @@ class SimulationEngine:
         for cid in before.keys() - after.keys():
             changes.append({"type": "compartment_change", "compartment_id": cid, "reason": "removed", "previous": before[cid]})
         return changes
+
+    def _item_for_order_item(self, order: dict) -> dict | None:
+        item_id = order.get("item_id")
+        if not isinstance(item_id, str):
+            return None
+        for item in self.world_state.get("items", []):
+            if item.get("id") == item_id:
+                return item
+        return None
+
+    def _nearest_oxygen_generator_location(self, x: int, y: int) -> dict | None:
+        ranked: list[tuple[int, str, dict]] = []
+        for key, machine in self.world_state.get("machines", {}).items():
+            if not isinstance(machine, dict):
+                continue
+            if machine.get("type") != MACHINE_OXYGEN_GENERATOR:
+                continue
+            try:
+                sx_str, sy_str = key.split(",")
+                sx, sy = int(sx_str), int(sy_str)
+            except Exception:
+                continue
+            dist = abs(sx - x) + abs(sy - y)
+            ranked.append((dist, key, {"x": sx, "y": sy}))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        return ranked[0][2]
 
     def _nearest_storage_location(self, x: int, y: int) -> dict | None:
         storages = self.world_state.get("storages", [])
