@@ -1264,7 +1264,7 @@ def test_phase5_foundation_mine_ice_creates_item_and_haul_order() -> None:
         {
             "id": "wo-mine-1",
             "work_type": "MineIce",
-            "status": "Assigned",
+https://github.com/code-smithy/MadStation/pull/27/conflict?name=tests%252Ftest_engine.py&ancestor_oid=d30e8e0eaedfd7af19a1aa0c54fbdfddd3c27d36&base_oid=59108e43729f19dd5793b6609c7a7e4446d09da3&head_oid=b97944e5c6cb643df8a1a7b70ceb2d23046c7268            "status": "Assigned",
             "location": {"x": 20, "y": 20},
             "created_tick": 1,
             "progress": 1,
