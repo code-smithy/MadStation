@@ -52,3 +52,11 @@ Use this checklist to validate persistence/recovery behavior.
 3. Stop and restart server.
 4. Confirm post-snapshot commands are restored via replay window (no full-state loss back to old snapshot).
 5. Confirm replay log shrinks after new snapshot persist (window compaction).
+
+
+## 7) Restore observability checks
+
+1. Restart the server from a valid snapshot + replay log.
+2. Verify `/status.restored_from_snapshot == 1`.
+3. Verify `/status.replay_commands_applied_on_restore` reflects replayed command count (>0 when post-snapshot commands existed).
+4. Verify `/status.replay_log_entries` stays bounded over time based on replay-window configuration.

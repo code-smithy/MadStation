@@ -114,8 +114,11 @@ class SimulationEngine:
         self.tick_duration_ms_ema: float = 0.0
         self.tick_duration_ms_max: float = 0.0
         self.command_queue_peak: int = 0
+        self.replay_commands_applied_on_restore: int = 0
+        self.restored_from_snapshot: bool = False
 
         restored = load_snapshot and self._load_snapshot_if_available()
+        self.restored_from_snapshot = bool(restored)
         if restored:
             self._replay_commands_since_snapshot()
         self._ensure_world_defaults()
@@ -204,6 +207,8 @@ class SimulationEngine:
             "command_queue_peak": self.command_queue_peak,
             "replay_log_entries": self._replay_log_entry_count(),
             "replay_log_path": str(self.replay_log_path),
+            "restored_from_snapshot": int(self.restored_from_snapshot),
+            "replay_commands_applied_on_restore": self.replay_commands_applied_on_restore,
         }
 
     def stop(self) -> None:
@@ -435,6 +440,7 @@ class SimulationEngine:
         if not self.replay_log_path.exists():
             return
         replayed_topology_change = False
+        replayed_count = 0
         for line in self.replay_log_path.read_text().splitlines():
             try:
                 entry = json.loads(line)
@@ -455,11 +461,13 @@ class SimulationEngine:
                 replayed_topology_change = replayed_topology_change or did_change
             elif command.type is CommandType.CREATE_WORK_ORDER:
                 self._apply_create_work_order(command, seq)
+            replayed_count += 1
             self.server_sequence_id = max(self.server_sequence_id, seq)
             self.tick = max(self.tick, int(entry.get("tick", self.tick)))
 
         if replayed_topology_change:
             self._recompute_compartments()
+        self.replay_commands_applied_on_restore = replayed_count
         self._update_power()
 
     def _replay_log_entry_count(self) -> int:

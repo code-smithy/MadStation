@@ -150,6 +150,10 @@
 - Added startup replay for commands newer than snapshot sequence. ✅
 - Added replay-log compaction on snapshot persist. ✅
 
+### Phase 6E (started in this iteration)
+- Added restore observability metrics (`restored_from_snapshot`, `replay_commands_applied_on_restore`). ✅
+- Added replay-window bound tests (`command_replay_max_entries`) to keep replay growth controlled. ✅
+
 **Exit criteria:** restart resumes world safely within snapshot tolerance.
 
 ## Phase 7 — Frontend MVP (parallel, correctness-first)

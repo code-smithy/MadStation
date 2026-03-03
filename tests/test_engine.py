@@ -1965,3 +1965,54 @@ def test_phase6d_snapshot_trim_replay_log(tmp_path) -> None:
         assert int(engine.runtime_status()["replay_log_entries"]) == 0
 
     asyncio.run(run())
+
+
+def test_phase6e_runtime_status_reports_restore_replay_counts(tmp_path) -> None:
+    async def run() -> None:
+        snapshot_path = tmp_path / "snapshot_restore_counts.json"
+        replay_path = tmp_path / "replay_restore_counts.jsonl"
+
+        first = SimulationEngine(
+            snapshot_path=str(snapshot_path),
+            replay_log_path=str(replay_path),
+            snapshot_cadence_ticks=100,
+            load_snapshot=False,
+        )
+        first._persist_snapshot()
+
+        await first.enqueue_command("r1", build_command("cmd1", 18, 19, "Wall"))
+        await first._execute_tick()
+
+        restored = SimulationEngine(
+            snapshot_path=str(snapshot_path),
+            replay_log_path=str(replay_path),
+            load_snapshot=True,
+        )
+        status = restored.runtime_status()
+        assert status["restored_from_snapshot"] == 1
+        assert status["replay_commands_applied_on_restore"] >= 1
+
+    asyncio.run(run())
+
+
+def test_phase6e_replay_log_respects_max_entries_window(tmp_path) -> None:
+    async def run() -> None:
+        snapshot_path = tmp_path / "snapshot_window.json"
+        replay_path = tmp_path / "replay_window.jsonl"
+        engine = SimulationEngine(
+            snapshot_path=str(snapshot_path),
+            replay_log_path=str(replay_path),
+            replay_max_entries=3,
+            snapshot_cadence_ticks=999,
+            load_snapshot=False,
+        )
+
+        for idx in range(5):
+            session = f"w{idx}"
+            await engine.enqueue_command(session, build_command(f"b{idx}", 18 + idx, 18, "Wall"))
+            await engine._execute_tick()
+
+        status = engine.runtime_status()
+        assert status["replay_log_entries"] <= 3
+
+    asyncio.run(run())

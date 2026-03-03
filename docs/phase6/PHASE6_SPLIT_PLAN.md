@@ -33,3 +33,9 @@ Phase 6 is split into persistence/recovery foundations first, then broader ops o
 - Added replay-log window foundation (`jsonl`) for post-snapshot applied commands. ✅
 - Added startup replay of commands newer than snapshot `server_sequence_id`. ✅
 - Added replay-log trimming on snapshot persist to bound replay window. ✅
+
+
+## Phase 6E (started in this iteration)
+
+- Added restore observability metrics: `restored_from_snapshot` and `replay_commands_applied_on_restore`. ✅
+- Added replay-window max-entry enforcement tests to bound replay growth. ✅
