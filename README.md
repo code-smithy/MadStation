@@ -20,12 +20,23 @@ A minimal Phase 1 implementation is now included:
 - first-write-wins conflict handling at tile target level
 - snapshot on websocket connect + per-tick delta broadcast
 
-### Run
+## Local setup (Linux/WSL, PEP 668 safe)
+
+If you see `externally-managed-environment`, install inside a virtual environment.
 
 ```bash
-pip install -e .
-uvicorn madstation.app:app --reload
+make install
 ```
+
+This creates `.venv`, upgrades pip, and installs the project dependencies.
+
+## Run server
+
+```bash
+make run
+```
+
+Then open `http://127.0.0.1:8000/health`.
 
 ## Testing
 
@@ -35,3 +46,8 @@ Run functional tests on every change:
 make test
 ```
 
+## Troubleshooting
+
+- `ModuleNotFoundError: No module named 'fastapi'`
+  - You are likely running system `uvicorn` without project dependencies.
+  - Fix by running `make install` and then `make run` so `uvicorn` comes from `.venv`.
