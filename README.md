@@ -110,7 +110,7 @@ make test
 
 ## Phase 2 progress
 
-Phase 2 is being delivered in slices. Core 2B door auto-state + open-door diffusion + oxygen-generator hooks are now implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md` for current scope.
+Phase 2 is complete: structural edits, deterministic door auto-state, compartment recomputation, diffusion/leaks, and oxygen generation hooks are implemented; see `docs/phase2/PHASE2_SPLIT_PLAN.md`.
 
 
 ## User-side testing (manual)
@@ -157,7 +157,7 @@ See `docs/phase3/USER_SIDE_TESTING.md` for the full step-by-step command checkli
 
 ## Phase 4 progress
 
-Phase 4 has commenced with deterministic NPC survival core mechanics: persistent 10-NPC roster, bounded speed attributes, diagonal survival movement, suffocation death handling, and automatic `DisposeBody` work-order creation. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
+Phase 4 is continuing with deterministic NPC survival mechanics: persistent 10-NPC roster, bounded speed attributes, diagonal movement with oxygen-aware path search, suffocation death handling, and automatic `DisposeBody` work-order creation. See `docs/phase4/PHASE4_SPLIT_PLAN.md`.
 
 ## Phase 4 manual testing
 

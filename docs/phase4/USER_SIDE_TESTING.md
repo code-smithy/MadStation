@@ -30,6 +30,7 @@ Use this checklist to validate initial NPC/death behavior.
 
 - Create a vacuum breach path that depressurizes a compartment with NPC presence.
 - Observe over ticks:
+  - NPC movement toward safer oxygen, including traversal through open doors when needed,
   - NPC `npc_survival_state` events when oxygen falls low,
   - eventual `npc_death` event at zero-oxygen damage threshold.
 - Verify in `GET /world`:

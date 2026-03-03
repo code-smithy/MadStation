@@ -59,7 +59,7 @@
 
 **Exit criteria:** 5 clients can connect and receive deterministic tick updates. ✅ Met (see `docs/phase1/PHASE1_COMPLETION.md`).
 
-## Phase 2 — World + Core Environment (Days 4–7) 🚧 In Progress
+## Phase 2 — World + Core Environment (Days 4–7) ✅ Completed
 
 ### Phase 2A (completed in current iteration)
 - Implemented 50x50 structural grid and structural edits via `Build`/`Deconstruct`.
@@ -67,12 +67,12 @@
 - Implemented compartment-level oxygen leak model from vacuum exposure.
 - Added tile mutation deltas and `compartment_count` runtime observability.
 
-### Phase 2B (in progress)
+### Phase 2B (completed)
 - Implemented diffusion behavior via explicit open-door boundaries. ✅
 - Implemented deterministic door auto-open/close baseline logic. ✅
 - Implemented oxygen generation hooks for machine integration. ✅
 
-**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (2A + core 2B door/diffusion behaviors are now in place; Phase 2 closure candidate; remaining work is mostly invariants/protocol polish.)
+**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. ✅ Met.
 
 ## Phase 3 — Power + Priority Load Shedding (Days 8–10) ✅ Completed
 
@@ -98,7 +98,7 @@
 - Added automatic `DisposeBody` work-order creation on death. ✅
 
 ### Phase 4B (next)
-- Upgrade baseline movement to full pathfinding across larger topology changes.
+- Added deterministic oxygen-aware path search baseline for multi-step routing (full task/path integration still pending). ✅
 - Expand needs/personality stack while preserving survival-first constraints.
 - Enrich death/body lifecycle state and task integration.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import hashlib
 import json
 import time
@@ -807,36 +808,75 @@ class SimulationEngine:
         index: dict[str, int],
         compartments: dict[int, dict],
     ) -> tuple[int, int] | None:
-        candidates: list[tuple[float, int, int]] = []
+        current = (x, y)
         current_oxygen = self._oxygen_at_tile(x, y, index, compartments)
 
-        for dx, dy in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            if grid[ny][nx] not in WALKABLE_TILES:
-                continue
-            oxygen = self._oxygen_at_tile(nx, ny, index, compartments)
-            score = oxygen - (0.1 if dx != 0 and dy != 0 else 0.0)
-            candidates.append((score, nx, ny))
+        visited: set[tuple[int, int]] = {current}
+        parents: dict[tuple[int, int], tuple[int, int]] = {}
+        distances: dict[tuple[int, int], int] = {current: 0}
+        frontier: deque[tuple[int, int]] = deque([current])
 
-        if not candidates:
+        best_target = current
+        best_rank = (current_oxygen >= SETTINGS.oxygen_safe_min_percent, current_oxygen, 0, -x, -y)
+
+        while frontier:
+            cx, cy = frontier.popleft()
+            for nx, ny in self._neighbors8(cx, cy, width, height):
+                if (nx, ny) in visited:
+                    continue
+                if grid[ny][nx] not in WALKABLE_TILES:
+                    continue
+
+                visited.add((nx, ny))
+                parents[(nx, ny)] = (cx, cy)
+                distances[(nx, ny)] = distances[(cx, cy)] + 1
+                frontier.append((nx, ny))
+
+                oxygen = self._oxygen_at_tile(nx, ny, index, compartments)
+                rank = (
+                    oxygen >= SETTINGS.oxygen_safe_min_percent,
+                    oxygen,
+                    -distances[(nx, ny)],
+                    -nx,
+                    -ny,
+                )
+                if rank > best_rank:
+                    best_rank = rank
+                    best_target = (nx, ny)
+
+        if best_target == current:
             return None
 
-        candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
-        best_score, best_x, best_y = candidates[0]
-        if best_score <= current_oxygen:
-            return None
-        return best_x, best_y
+        step = best_target
+        while parents.get(step) != current:
+            parent = parents.get(step)
+            if parent is None:
+                return None
+            step = parent
+        return step
 
     def _oxygen_at_tile(self, x: int, y: int, index: dict[str, int], compartments: dict[int, dict]) -> float:
         comp_id = index.get(self._xy_key(x, y))
-        if comp_id is None:
-            return 0.0
-        compartment = compartments.get(int(comp_id))
-        if compartment is None:
-            return 0.0
-        return float(compartment.get("oxygen_percent", 0.0))
+        if comp_id is not None:
+            compartment = compartments.get(int(comp_id))
+            if compartment is not None:
+                return float(compartment.get("oxygen_percent", 0.0))
+
+        # Door tiles are walkable but not part of compartments; infer local oxygen from adjacent compartments.
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        adjacent_values: list[float] = []
+        for nx, ny in self._neighbors4(x, y, width, height):
+            neighbor_comp = index.get(self._xy_key(nx, ny))
+            if neighbor_comp is None:
+                continue
+            compartment = compartments.get(int(neighbor_comp))
+            if compartment is None:
+                continue
+            adjacent_values.append(float(compartment.get("oxygen_percent", 0.0)))
+        if adjacent_values:
+            return max(adjacent_values)
+        return 0.0
 
     def _compartment_snapshot_map(self) -> dict[int, dict]:
         snapshot: dict[int, dict] = {}
@@ -937,6 +977,15 @@ class SimulationEngine:
             )
 
         return events
+
+    @staticmethod
+    def _neighbors8(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:
+        points: list[tuple[int, int]] = []
+        for dx, dy in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                points.append((nx, ny))
+        return points
 
     @staticmethod
     def _neighbors4(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:

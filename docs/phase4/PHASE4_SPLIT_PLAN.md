@@ -6,7 +6,7 @@ Phase 4 is started with a deterministic NPC survival core before broader behavio
 
 - Added 10 named persistent NPCs in world state initialization.
 - Added deterministic NPC attributes including bounded speed in `[1,4]`.
-- Added survival-first NPC movement using diagonal neighbors (8-way candidate evaluation).
+- Added survival-first NPC movement using diagonal neighbors (8-way evaluation) with deterministic oxygen-aware path search.
 - Added suffocation damage and permanent death handling.
 - Added automatic `DisposeBody` work-order creation on NPC death.
 - Added NPC/death/work-order delta outputs through:
@@ -16,7 +16,7 @@ Phase 4 is started with a deterministic NPC survival core before broader behavio
 
 ## Phase 4B (next)
 
-- Replace local oxygen-gradient movement with full pathfinding.
+- Upgrade oxygen-aware path search to full task-aware pathfinding across dynamic topology.
 - Add needs model and personality modifiers (without overriding survival constraints).
 - Add richer death metadata and body lifecycle progression.
 

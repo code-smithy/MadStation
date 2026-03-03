@@ -732,3 +732,62 @@ def test_npc_death_appends_log_and_dispose_body_work_order() -> None:
     assert len(work_order_changes) == 1
     assert work_order_changes[0]["work_order"]["work_type"] == "DisposeBody"
     assert any(change.get("type") == "npc_death" for change in npc_changes)
+
+
+def test_npc_path_search_can_route_through_door_to_safer_compartment() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-route",
+            "name": "Route",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+        }
+    ]
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][6] = "Door"
+    engine.world_state["door_states"]["6,5"] = {"open": True}
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+
+    left = int(engine.world_state["compartment_index"]["5,5"])
+    right = int(engine.world_state["compartment_index"]["7,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == left:
+            comp["oxygen_percent"] = 5.0
+        if int(comp["id"]) == right:
+            comp["oxygen_percent"] = 85.0
+
+    engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (6, 5)
+
+
+def test_door_tile_oxygen_uses_adjacent_compartment_values() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][5][5] = "Floor"
+    engine.world_state["grid"][5][6] = "Door"
+    engine.world_state["grid"][5][7] = "Floor"
+    engine._recompute_compartments()
+
+    left = int(engine.world_state["compartment_index"]["5,5"])
+    right = int(engine.world_state["compartment_index"]["7,5"])
+    for comp in engine.world_state["compartments"]:
+        if int(comp["id"]) == left:
+            comp["oxygen_percent"] = 11.0
+        if int(comp["id"]) == right:
+            comp["oxygen_percent"] = 73.0
+
+    oxygen = engine._oxygen_at_tile(6, 5, engine.world_state["compartment_index"], {int(c["id"]): c for c in engine.world_state["compartments"]})
+    assert oxygen == 73.0
