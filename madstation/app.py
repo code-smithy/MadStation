@@ -38,7 +38,7 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/status")
-async def status() -> dict[str, int]:
+async def status() -> dict[str, object]:
     return engine.runtime_status()
 
 

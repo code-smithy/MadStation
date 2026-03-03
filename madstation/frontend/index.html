@@ -23,6 +23,7 @@
     <strong>MadStation Frontend MVP (Phase 7A)</strong>
     <span id="conn" class="muted">WS: connecting...</span>
     <span id="tick" class="muted">tick: --</span>
+    <span id="wsUrl" class="muted">ws: --</span>
   </header>
 
   <main>
@@ -75,6 +76,19 @@
     const val = (id) => document.getElementById(id).value;
 
     let ws;
+    let wsAttempt = 0;
+
+    function wsCandidates() {
+      const params = new URLSearchParams(location.search);
+      const fromQuery = params.get('ws');
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const cands = [];
+      if (fromQuery) cands.push(fromQuery);
+      if (location.host) cands.push(`${proto}://${location.host}/ws`);
+      cands.push('ws://127.0.0.1:8000/ws');
+      cands.push('ws://localhost:8000/ws');
+      return Array.from(new Set(cands));
+    }
 
     function appendLog(obj) {
       const line = typeof obj === 'string' ? obj : JSON.stringify(obj);
@@ -116,10 +130,32 @@
     }
 
     function connectWs() {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
-      ws.onopen = () => { connEl.textContent = 'WS: connected'; };
-      ws.onclose = () => { connEl.textContent = 'WS: disconnected'; setTimeout(connectWs, 1200); };
+      const candidates = wsCandidates();
+      const target = candidates[wsAttempt % candidates.length];
+      wsAttempt += 1;
+      document.getElementById('wsUrl').textContent = `ws: ${target}`;
+
+      try {
+        ws = new WebSocket(target);
+      } catch (err) {
+        connEl.textContent = `WS: connect error`;
+        appendLog({ ws_error: String(err) });
+        setTimeout(connectWs, 1200);
+        return;
+      }
+
+      ws.onopen = () => {
+        connEl.textContent = 'WS: connected';
+        appendLog({ ws_connected: target });
+      };
+      ws.onclose = () => {
+        connEl.textContent = 'WS: disconnected';
+        appendLog({ ws_disconnected: target });
+        setTimeout(connectWs, 1200);
+      };
+      ws.onerror = () => {
+        connEl.textContent = 'WS: error';
+      };
       ws.onmessage = (ev) => {
         const data = JSON.parse(ev.data);
         if (data.type === 'delta_tick' || data.type === 'snapshot_full') {

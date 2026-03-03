@@ -35,3 +35,10 @@ Use this checklist to validate the frontend MVP.
 
 1. Leave page open while simulation runs.
 2. Confirm websocket deltas continue refreshing grid/status without manual reload.
+
+
+## Troubleshooting
+
+- If WS remains disconnected, check the displayed `ws:` target in the header.
+- Retry using query override: `/?ws=ws://127.0.0.1:8000/ws` (or your explicit host/port).
+- Ensure server logs show websocket upgrade attempts on `/ws`.
