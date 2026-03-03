@@ -31,6 +31,9 @@ async def status() -> dict[str, int]:
     return engine.runtime_status()
 
 
+@app.get("/world")
+async def world() -> dict:
+    return engine.world_snapshot()
 
 
 @app.get("/ws")

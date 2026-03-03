@@ -1,6 +1,6 @@
 import asyncio
 
-from madstation.engine import SimulationEngine
+from madstation.engine import SimulationEngine, TILE_VACUUM, TILE_WALL
 from madstation.protocol import ClientCommand, CommandResult, CommandType
 
 
@@ -21,8 +21,11 @@ class FailingWebSocket(FakeWebSocket):
         raise RuntimeError("socket failed")
 
 
-def build_command(command_id: str, x: int, y: int) -> ClientCommand:
-    return ClientCommand(client_command_id=command_id, type=CommandType.BUILD, payload={"x": x, "y": y})
+def build_command(command_id: str, x: int, y: int, tile_type: str | None = None) -> ClientCommand:
+    payload = {"x": x, "y": y}
+    if tile_type is not None:
+        payload["tile_type"] = tile_type
+    return ClientCommand(client_command_id=command_id, type=CommandType.BUILD, payload=payload)
 
 
 def test_connect_sends_snapshot_full() -> None:
@@ -46,6 +49,22 @@ def test_enqueue_command_rejects_invalid_payload() -> None:
         ack = await engine.enqueue_command(
             "anon-test",
             ClientCommand(client_command_id="c1", type=CommandType.BUILD, payload={"x": "bad", "y": 1}),
+        )
+        assert ack.result == CommandResult.INVALID_PAYLOAD
+
+    asyncio.run(run())
+
+
+def test_build_rejects_invalid_tile_type() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ack = await engine.enqueue_command(
+            "anon-test",
+            ClientCommand(
+                client_command_id="c1",
+                type=CommandType.BUILD,
+                payload={"x": 1, "y": 1, "tile_type": "NotATile"},
+            ),
         )
         assert ack.result == CommandResult.INVALID_PAYLOAD
 
@@ -111,6 +130,54 @@ def test_execute_tick_applies_first_write_wins_for_conflicts() -> None:
     asyncio.run(run())
 
 
+def test_build_and_deconstruct_emit_tile_changes() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session_id = await engine.connect(ws)
+
+        await engine.enqueue_command(session_id, build_command("wall-1", 2, 2, TILE_WALL))
+        await engine._execute_tick()
+
+        engine.last_action_at.pop(session_id, None)
+        await engine.enqueue_command(
+            session_id,
+            ClientCommand(client_command_id="decon-1", type=CommandType.DECONSTRUCT, payload={"x": 2, "y": 2}),
+        )
+        await engine._execute_tick()
+
+        deltas = [m for m in ws.messages if m.get("type") == "delta_tick"]
+        assert len(deltas) >= 2
+        first_changes = deltas[-2]["tile_changes"]
+        second_changes = deltas[-1]["tile_changes"]
+        assert len(first_changes) == 1
+        assert len(second_changes) == 1
+        assert first_changes[0]["after"] == TILE_WALL
+        assert second_changes[0]["after"] == TILE_VACUUM
+        assert engine.world_state["grid"][2][2] == TILE_VACUUM
+
+    asyncio.run(run())
+
+
+def test_oxygen_drops_after_vacuum_breach() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session_id = await engine.connect(ws)
+
+        before = engine.world_state["compartments"][0]["oxygen_percent"]
+        await engine.enqueue_command(
+            session_id,
+            ClientCommand(client_command_id="breach", type=CommandType.DECONSTRUCT, payload={"x": 0, "y": 0}),
+        )
+        await engine._execute_tick()
+        after = engine.world_state["compartments"][0]["oxygen_percent"]
+
+        assert after < before
+
+    asyncio.run(run())
+
+
 def test_broadcast_disconnects_failing_socket() -> None:
     async def run() -> None:
         engine = SimulationEngine()
@@ -164,6 +231,7 @@ def test_runtime_status_exposes_tick_and_queue_metrics() -> None:
         assert status_before["tick"] == 0
         assert status_before["connected_clients"] == 1
         assert status_before["queued_commands"] == 1
+        assert status_before["compartment_count"] >= 1
 
         await engine._execute_tick()
         status_after = engine.runtime_status()

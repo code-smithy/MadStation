@@ -9,6 +9,9 @@
 - `docs/phase0/DELTA_PROTOCOL.md`
 - `docs/phase0/DETERMINISM_TEST_PLAN.md`
 - `docs/phase1/PHASE1_COMPLETION.md`
+- `docs/phase2/PHASE2_SPLIT_PLAN.md`
+- `docs/phase2/PHASE2_NEXT_STEPS.md`
+- `docs/phase2/USER_SIDE_TESTING.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -38,7 +41,7 @@ This creates `.venv`, upgrades pip, and installs project dependencies (including
 make run
 ```
 
-Then open `http://127.0.0.1:8000/health` and `http://127.0.0.1:8000/status`.
+Then open `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/status`, and `http://127.0.0.1:8000/world`.
 
 ## Connect a client (WebSocket)
 
@@ -94,3 +97,30 @@ make test
 - `No supported WebSocket library detected`
   - Your environment is missing `websockets`/`wsproto` for Uvicorn upgrades.
   - Fix with `make install` (this project now installs `websockets` by default).
+
+
+## Phase 2 progress
+
+Phase 2 is being delivered in slices. See `docs/phase2/PHASE2_SPLIT_PLAN.md` for 2A/2B scope.
+
+
+## User-side testing (manual)
+
+1. Start server: `make run`.
+2. Open `/world` and confirm a 50x50 `grid` exists.
+3. Connect websocket: `wscat -c ws://127.0.0.1:8000/ws`.
+4. Send a wall build command:
+
+```json
+{"client_command_id":"u1","type":"Build","payload":{"x":3,"y":3,"tile_type":"Wall"}}
+```
+
+5. Send a decompression command:
+
+```json
+{"client_command_id":"u2","type":"Deconstruct","payload":{"x":0,"y":0}}
+```
+
+6. Watch `delta_tick.tile_changes` in websocket output and refresh `/world` to confirm tile mutations + compartment oxygen drift.
+
+See `docs/phase2/USER_SIDE_TESTING.md` for a fuller checklist.

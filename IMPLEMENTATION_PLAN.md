@@ -59,17 +59,20 @@
 
 **Exit criteria:** 5 clients can connect and receive deterministic tick updates. ✅ Met (see `docs/phase1/PHASE1_COMPLETION.md`).
 
-## Phase 2 — World + Core Environment (Days 4–7)
+## Phase 2 — World + Core Environment (Days 4–7) 🚧 In Progress
 
-- Implement 50x50 grid and structural edits.
-- Implement compartment flood-fill recalculation only on topology change.
-- Implement oxygen model at compartment level:
-  - vacuum leak,
-  - diffusion via open doors,
-  - oxygen generation hooks.
+### Phase 2A (completed in current iteration)
+- Implemented 50x50 structural grid and structural edits via `Build`/`Deconstruct`.
+- Implemented compartment flood-fill recalculation only on topology change.
+- Implemented compartment-level oxygen leak model from vacuum exposure.
+- Added tile mutation deltas and `compartment_count` runtime observability.
+
+### Phase 2B (next)
+- Implement diffusion behavior via explicit open boundaries (door-driven).
 - Implement door auto-open/close baseline logic.
+- Add oxygen generation hooks for machine integration.
 
-**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments.
+**Exit criteria:** removing a wall causes visible decompression and oxygen decay in expected compartments. (Partially met in 2A; finalized after 2B door/diffusion hooks.)
 
 ## Phase 3 — Power + Priority Load Shedding (Days 8–10)
 
@@ -181,3 +184,6 @@ This is an engine skeleton for Phase 1 integration and does not yet include full
 ## Phase 1 Completion Documentation
 
 Phase 1 closure, verification mapping, and handoff notes are documented in `docs/phase1/PHASE1_COMPLETION.md`.
+
+
+Phase 2 split details are tracked in `docs/phase2/PHASE2_SPLIT_PLAN.md`.
