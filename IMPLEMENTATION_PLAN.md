@@ -107,17 +107,17 @@
 
 **Exit criteria:** NPCs navigate, prioritize survival, and deaths persist with cause/timestamp. ✅ Met.
 
-## Phase 5 — Work Orders + Physical Logistics Loop (Days 16–21)
+## Phase 5 — Work Orders + Physical Logistics Loop (Days 16–21) 🚧 In Progress
 
-- Add global work queue and status lifecycle.
-- Add physical items and storage inventories (no abstract resource pool).
-- Add auto-resolve for race conditions on shared orders.
-- Implement MVP chain:
-  - Mine Ice
-  - Haul to Refinery
-  - Produce WaterUnit
-  - Haul to Oxygen Generator
-  - Consume Water + Power to raise oxygen.
+### Phase 5A (started in current iteration)
+- Added command-applied work-order creation path into authoritative world state. ✅
+- Added physical `items` and `storages` state scaffolding with inventory tracking. ✅
+- Added baseline `MineIce` -> auto `HaulItem` to storage foundation loop. ✅
+
+### Phase 5B (next)
+- Expand work-order schema and richer logistics command validation.
+- Implement refinery + oxygen-feed machine chain with physical transfer semantics.
+- Add race collision/replan behavior for shared logistics orders.
 
 **Exit criteria:** full life-support chain works end-to-end without teleportation.
 
@@ -204,3 +204,7 @@ Phase 3 split details are tracked in `docs/phase3/PHASE3_SPLIT_PLAN.md`.
 
 
 Phase 4 split details are tracked in `docs/phase4/PHASE4_SPLIT_PLAN.md`.
+
+
+
+Phase 5 split details are tracked in `docs/phase5/PHASE5_SPLIT_PLAN.md`.

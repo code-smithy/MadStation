@@ -1214,3 +1214,123 @@ def test_default_npc_spawns_are_inside_station_walkable_tiles() -> None:
         assert grid[y][x] in {"Floor", "Door", "Airlock"}
         assert 14 < x < 35
         assert 14 < y < 35
+
+
+def test_create_work_order_command_creates_order_and_delta_change() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        session = await engine.connect(ws)
+
+        cmd = ClientCommand(
+            client_command_id="wo-cmd-1",
+            type=CommandType.CREATE_WORK_ORDER,
+            payload={
+                "work_type": "MineIce",
+                "location": {"x": 20, "y": 20},
+                "metadata": {"item_type": "IceChunk", "destination": {"x": 19, "y": 19}},
+            },
+        )
+        ack = await engine.enqueue_command(session, cmd)
+        assert ack.result == CommandResult.QUEUED
+
+        await engine._execute_tick()
+        assert any(order.get("work_type") == "MineIce" for order in engine.world_state.get("work_orders", []))
+
+        last_delta = [m for m in ws.messages if m.get("type") == "delta_tick"][-1]
+        assert any(change.get("type") == "work_order_created_by_command" for change in last_delta.get("work_order_changes", []))
+
+    asyncio.run(run())
+
+
+def test_phase5_foundation_mine_ice_creates_item_and_haul_order() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-miner",
+            "name": "Miner",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-mine-1",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-mine-1",
+            "work_type": "MineIce",
+https://github.com/code-smithy/MadStation/pull/27/conflict?name=tests%252Ftest_engine.py&ancestor_oid=d30e8e0eaedfd7af19a1aa0c54fbdfddd3c27d36&base_oid=59108e43729f19dd5793b6609c7a7e4446d09da3&head_oid=b97944e5c6cb643df8a1a7b70ceb2d23046c7268            "status": "Assigned",
+            "location": {"x": 20, "y": 20},
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-miner",
+            "item_type": "IceChunk",
+        }
+    ]
+
+    npc_changes, work_changes, _ = engine._update_npcs()
+
+    assert any(change.get("type") == "item_created" for change in npc_changes)
+    assert any(order.get("work_type") == "HaulItem" for order in engine.world_state.get("work_orders", []))
+    assert any(change.get("type") == "work_order_created_auto" for change in work_changes)
+
+
+def test_phase5_foundation_haul_item_stores_into_storage_inventory() -> None:
+    engine = SimulationEngine()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-hauler",
+            "name": "Hauler",
+            "x": 19,
+            "y": 19,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-haul-1",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["items"] = [
+        {
+            "id": "item-1",
+            "item_type": "IceChunk",
+            "location": {"x": 19, "y": 19},
+            "holder_npc_id": "npc-hauler",
+            "created_tick": 1,
+        }
+    ]
+    engine.world_state["storages"] = [
+        {"id": "storage-main", "location": {"x": 19, "y": 19}, "inventory": []}
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-haul-1",
+            "work_type": "HaulItem",
+            "status": "Assigned",
+            "location": {"x": 19, "y": 19},
+            "destination": {"x": 19, "y": 19},
+            "item_id": "item-1",
+            "created_tick": 1,
+            "progress": 1,
+            "required_progress": 2,
+            "assignee_npc_id": "npc-hauler",
+        }
+    ]
+
+    _, work_changes, _ = engine._update_npcs()
+
+    order = engine.world_state["work_orders"][0]
+    item = engine.world_state["items"][0]
+    storage = engine.world_state["storages"][0]
+    assert order["status"] == "Completed"
+    assert item["holder_npc_id"] is None
+    assert "item-1" in storage["inventory"]
+    assert any(change.get("type") == "item_stored" for change in work_changes)

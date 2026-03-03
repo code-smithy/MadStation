@@ -17,6 +17,7 @@
 - `docs/phase3/USER_SIDE_TESTING.md`
 - `docs/phase4/PHASE4_SPLIT_PLAN.md`
 - `docs/phase4/USER_SIDE_TESTING.md`
+- `docs/phase5/PHASE5_SPLIT_PLAN.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -169,3 +170,8 @@ Phase 4 core is complete for MVP scope: deterministic NPC roster/movement, survi
 4. Confirm `DisposeBody` appears in `world.work_orders` and death records append in `world.death_log`.
 
 See `docs/phase4/USER_SIDE_TESTING.md` for full operator checklist.
+
+
+## Phase 5 progress
+
+Phase 5 has started with logistics foundation work: command-applied work-order creation, physical item/storage state scaffolding, and initial `MineIce` -> `HaulItem` storage flow. See `docs/phase5/PHASE5_SPLIT_PLAN.md`.
