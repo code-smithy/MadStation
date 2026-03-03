@@ -33,7 +33,7 @@ If you see `externally-managed-environment`, install inside a virtual environmen
 make install
 ```
 
-This creates `.venv`, upgrades pip, and installs project dependencies (including WebSocket runtime support).
+This creates `.venv`, upgrades pip, and installs project + dev dependencies (including WebSocket runtime support and `pytest`).
 
 ## Run server
 
@@ -97,6 +97,10 @@ make test
 - `No supported WebSocket library detected`
   - Your environment is missing `websockets`/`wsproto` for Uvicorn upgrades.
   - Fix with `make install` (this project now installs `websockets` by default).
+
+- `No module named pytest` when running `make test`
+  - Your virtualenv was created before test dependencies were added, or install did not complete.
+  - Fix by running `make install` again (installs `.[dev]`, including `pytest`).
 
 
 ## Phase 2 progress

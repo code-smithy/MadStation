@@ -10,7 +10,7 @@ venv:
 
 install: venv
 	$(PIP) install --upgrade pip
-	$(PIP) install -e .
+	$(PIP) install -e ".[dev]"
 
 run:
 	$(UVICORN) madstation.app:app --reload

@@ -16,3 +16,8 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["madstation*"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
