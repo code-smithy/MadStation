@@ -11,11 +11,12 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
 
 ### P1 — Temperature gameplay (heaters/coolers + machine heat)
 - **Problem:** Simulation currently has oxygen/power but no thermal gameplay loop.
-- **Goal:** Add deterministic compartment temperature simulation with vacuum cooling, machine waste heat, and powered HVAC control.
+- **Goal:** Add deterministic **per-tile** temperature simulation with softened vacuum cooling, machine waste heat, and powered on/off HVAC control.
 - **Done when:**
   - Temperature fields and thermal updates are deterministic and observable.
-  - Heaters/coolers and machine heat affect compartments with power gating.
-  - Tests and user-side thermal checklist are documented in `docs/phase8/TEMPERATURE_GAMEPLAY_PLAN.md`.
+  - Heaters/coolers and machine heat affect tiles with power gating.
+  - NPCs flee dangerous thermal zones when feasible.
+  - Split plan + user testing are documented in `docs/phase8/PHASE8_SPLIT_PLAN.md` and `docs/phase8/USER_SIDE_TESTING.md`.
 
 ### P1 — Door power-loss behavior model
 - **Problem:** Door behavior under power loss is still deferred.

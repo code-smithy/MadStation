@@ -1,132 +1,126 @@
 # Phase 8 Proposal — Temperature Gameplay (Heaters, Coolers, Machine Heat)
 
-This document proposes a deterministic temperature simulation layer that builds on the current compartment/oxygen/power model.
+This document captures the agreed Phase 8 direction and implementation constraints for a deterministic thermal gameplay loop.
+
+## Confirmed decisions
+
+1. **Granularity:** implement **per-tile temperature effects** in Phase 8 (not compartment-only).
+2. **Tuning:** keep thermal behavior **softened for gameplay** in initial rollout.
+3. **NPC behavior:** NPCs should **flee dangerous temperatures** (not only take damage).
+4. **HVAC control:** `Heater`/`Cooler` ship as **on/off** machines first.
+5. **Machine heat scope:** include machines that naturally generate heat in MVP (Generator/Refiner/Reactors and other high-power producers/processors).
+6. **Machine failure from temperature:** **out of scope** for this phase.
+7. **Delivery approach:** split implementation into multiple PRs where it reduces risk (engine first, then UI/polish).
 
 ## Why this next
 
 Temperature is a strong systems connector:
 - **Power**: heaters/coolers become meaningful, non-trivial consumers.
 - **Machines**: generators/refiners can produce waste heat.
-- **Atmospherics**: vacuum exposure should rapidly cool local environments.
-- **NPC gameplay**: thermal stress can shape priorities, routing, and failure cascades.
+- **Atmospherics**: vacuum exposure should cool local environments.
+- **NPC gameplay**: thermal stress and flee behavior create emergent failure cascades.
 
 ## Design principles
 
-1. **Deterministic-first**: no wall-clock branching; all updates are tick-based and stable-order.
-2. **Compartment-first baseline**: start with per-compartment temperature, optional per-tile later.
-3. **Config-driven tuning**: all constants in `SETTINGS` with conservative defaults.
-4. **Power-coupled actuation**: heaters/coolers only apply effects when powered and enabled.
-5. **Debuggable state**: expose clear metrics/events in `/status`, `/world`, and websocket deltas.
+1. **Deterministic-first**: no wall-clock branching; tick-based updates in stable order.
+2. **Per-tile thermal state**: simulation source of truth is at tile resolution.
+3. **Config-driven tuning**: constants in `SETTINGS` with gameplay-soft defaults.
+4. **Power-coupled actuation**: heaters/coolers only affect tiles when powered + enabled.
+5. **Debuggable state**: clear thermal metrics/events in `/status`, `/world`, websocket deltas, and UI overlays.
 
-## MVP model (Phase 8A)
+## MVP model
 
-### New world state (compartment-level)
-- `compartment.temperature_c` (float, default e.g. `21.0`).
-- Optional runtime aggregates:
+### New world state
+- `tile.temperature_c` for each tile (authoritative thermal field).
+- Optional aggregate telemetry:
   - `thermal_state.avg_temp_c`
   - `thermal_state.min_temp_c`
   - `thermal_state.max_temp_c`
+  - `thermal_state.danger_tile_count`
 
 ### Heat sources/sinks
-- **Passive sink**: vacuum-adjacent compartments lose heat each tick.
-- **Door/open-boundary transfer**: neighboring compartments exchange heat.
-- **Machine heat**: selected powered machines contribute `waste_heat_kw` (or `heat_delta_per_tick`).
+- **Passive vacuum cooling**: tiles exposed to vacuum lose heat each tick (softened coefficients).
+- **Tile-to-tile transfer**: neighboring traversable/open boundaries exchange heat deterministically.
+- **Machine waste heat**: selected powered machines contribute local positive heat.
 - **Active HVAC machines**:
-  - `Heater` raises local compartment temp when powered.
-  - `Cooler` lowers local compartment temp when powered.
+  - `Heater`: raises nearby tile temps while powered.
+  - `Cooler`: lowers nearby tile temps while powered.
 
-### NPC thermal effects (minimal)
-- Add soft bounds:
+### NPC thermal effects
+- Add comfort/hazard thresholds:
   - `temp_comfort_min_c`, `temp_comfort_max_c`
   - `temp_hazard_min_c`, `temp_hazard_max_c`
-- Outside comfort: gradual stamina/health penalties.
-- Outside hazard: stronger deterministic damage (parallel to oxygen suffocation model).
+- Outside comfort: mild penalties.
+- In hazard: deterministic health loss + flee routing preference toward safer tiles.
 
-### Suggested command extensions
-- `Build` accepts machine types: `Heater`, `Cooler`.
-- Existing machine payload may include:
-  - `target_temp_c` (for future closed-loop control)
-  - `enabled`.
+### Command/model updates
+- `Build` supports machine types: `Heater`, `Cooler`.
+- Machine payload remains on/off-oriented (`enabled`); no target setpoint in this phase.
 
-## Split plan
+## Split plan (execution)
 
-## 8A — Thermal baseline + HVAC machines
+### 8A — Engine thermal baseline (per-tile) + API observability
 
-- Add compartment temperature field and tick update pass.
-- Add heat transfer between compartments and vacuum sink behavior.
-- Add `Heater` and `Cooler` machine types with powered gating.
-- Add machine waste-heat hooks for existing machines.
-- Expose temperature in `/world` and summary in `/status`.
+- Add per-tile temperature field and thermal tick pass.
+- Implement softened vacuum cooling and tile transfer.
+- Add machine waste heat contributions for selected machine types.
+- Add powered `Heater`/`Cooler` behavior (on/off).
+- Expose thermal summaries in `/status` and tile temperatures in `/world`.
 
 **Exit criteria**
-- Compartments trend toward expected temperatures deterministically.
-- Heaters/coolers visibly affect temperature only when powered.
-- Breach/open-to-vacuum causes cooling trend.
+- Thermal evolution is deterministic across replay.
+- Vacuum breaches cool nearby tiles in expected trend.
+- Heaters/coolers and machine heat only apply when powered.
 
-## 8B — NPC thermal gameplay integration
+### 8B — NPC thermal gameplay behavior
 
-- Add NPC thermal stress model and health penalties.
-- Extend work-order/NPC decision hints (optional): prefer safer thermal routes.
-- Emit thermal-related events in deltas (e.g. `thermal_hazard_entered`).
-
-**Exit criteria**
-- NPCs reliably degrade in extreme temperatures.
-- Telemetry/events make thermal failures diagnosable.
-
-## 8C — UI + operator workflows
-
-- Add temperature overlay/view mode in frontend.
-- Add inspector fields for tile/compartment temperature.
-- Add quick-actions/forms for placing/configuring heaters/coolers.
-- Add event-log entries for notable thermal transitions.
+- Add hazard-aware NPC penalties and flee behavior.
+- Emit thermal-related NPC/events in deltas for observability.
 
 **Exit criteria**
-- Operator can induce and observe thermal failures via UI only.
+- NPCs leave hazardous thermal zones when possible.
+- Extreme temperatures still produce deterministic degradation when escape is impossible.
+
+### 8C — Frontend thermal UX and validation
+
+- Add Temperature view mode/overlay and legend.
+- Show tile temperature in inspector.
+- Add quick actions for placing heaters/coolers.
+- Extend event feed for thermal state transitions.
+
+**Exit criteria**
+- Operator can induce and observe thermal effects from UI without manual JSON.
 
 ## Testing plan
 
 ### Automated tests (engine)
-1. **Determinism**
-   - Same seed + command stream => identical compartment temps over N ticks.
-2. **Vacuum cooling**
-   - Breached compartment temperature decreases at configured rate.
-3. **Transfer**
-   - Two connected compartments converge toward each other.
-4. **HVAC powered gating**
-   - Heater/cooler has no effect when unpowered, works when powered.
-5. **Machine waste heat**
-   - Running power producer/refiner increases local temp by configured amount.
-6. **NPC thermal hazard**
-   - NPC health declines in hazard zone according to deterministic constants.
+1. **Determinism:** same seed/commands => same tile temperature field over N ticks.
+2. **Vacuum cooling:** breached/open tiles trend cooler at configured rates.
+3. **Local transfer:** adjacent tile temperatures converge over time.
+4. **HVAC power gating:** heater/cooler inert when unpowered, effective when powered.
+5. **Machine heat:** configured hot machines raise local temperatures.
+6. **NPC flee:** NPC in hazard chooses route toward safer temperature zone.
 
 ### Automated tests (API/frontend integration)
 1. `/status` includes thermal summary fields.
-2. `/world` includes per-compartment temperature.
-3. Websocket deltas include thermal-relevant change payloads.
-4. Frontend temperature overlay renders expected legend/value mapping.
+2. `/world` includes tile temperature values.
+3. Websocket deltas include thermal change/event payloads.
+4. Frontend temperature overlay renders values/legend correctly.
 
-### User-side testing checklist (manual)
-1. Place heater in sealed powered compartment; verify warming trend.
-2. Disable power; verify warming stops.
-3. Create breach to vacuum; verify cooling trend accelerates.
-4. Place cooler; verify temperature drops while powered.
-5. Observe NPC in thermal hazard and verify health decline/event feed.
+### User-side checklist (manual)
+1. Place powered heater in enclosed space; verify local warming.
+2. Remove power; verify warming stops.
+3. Create vacuum exposure; verify cooling trend near breach.
+4. Place powered cooler; verify local cooling.
+5. Observe NPC entering thermal hazard and fleeing when path exists.
 
-## Open product questions (needs your decisions)
+## Out-of-scope explicitly
 
-1. **Simulation granularity**: keep compartment-only for Phase 8, or include any per-tile thermal effects now?
-2. **Realism vs gameplay**: should vacuum cooling be physically steep (fast lethal) or softened for playability?
-3. **NPC behavior**: should NPCs proactively flee thermal hazards in 8B, or only take damage first?
-4. **HVAC control**: do you want simple on/off machines first, or target-temperature control in first pass?
-5. **Machine heat scope**: which machines should emit heat initially (Generator, Refiner, all powered consumers)?
-6. **Failure policy**: can extreme temps disable machines, or should machine reliability remain out-of-scope?
-7. **UI priority**: should temperature overlay ship in same PR as engine baseline, or immediately after in 8C?
+- Temperature-based machine breakage/reliability failures.
+- Closed-loop thermostat/setpoint control.
 
-## Suggested implementation order
+## Suggested PR order
 
-1. 8A engine-only baseline + tests.
-2. Minimal `/status` + `/world` thermal observability.
-3. 8C frontend overlay + controls.
-4. 8B NPC thermal consequences and balancing pass.
-
-This order minimizes coupling risk while quickly making thermal behavior visible and testable.
+1. PR-1: 8A engine + tests + API thermal fields.
+2. PR-2: 8B NPC flee + hazard events + tests.
+3. PR-3: 8C frontend overlay/inspector/controls + UI tests + updated user testing doc.
