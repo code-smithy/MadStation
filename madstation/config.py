@@ -28,6 +28,11 @@ class Settings:
     thermal_max_transfer_delta_c_per_tick: float = 2.0
     thermal_heater_delta_c_per_tick: float = 1.6
     thermal_cooler_delta_c_per_tick: float = 1.6
+    thermal_comfort_min_c: float = 16.0
+    thermal_comfort_max_c: float = 28.0
+    thermal_hazard_min_c: float = 0.0
+    thermal_hazard_max_c: float = 38.0
+    thermal_hazard_damage_per_tick: float = 3.0
 
 
 SETTINGS = Settings()

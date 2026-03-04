@@ -429,6 +429,23 @@ class SimulationEngine:
         ):
             self.world_state["temperature_grid"] = self._build_default_temperature_grid(grid)
 
+    def _sync_temperature_grid_with_tiles(self) -> None:
+        self._ensure_temperature_grid_dimensions()
+        grid = self.world_state.get("grid", [])
+        temp_grid = self.world_state.get("temperature_grid", [])
+        if not grid or not temp_grid:
+            return
+        base = float(SETTINGS.thermal_default_temp_c)
+        space = float(SETTINGS.thermal_space_temp_c)
+        for y, row in enumerate(grid):
+            for x, tile in enumerate(row):
+                value = temp_grid[y][x]
+                current = float(value) if isinstance(value, (int, float)) else base
+                if tile == TILE_VACUUM:
+                    temp_grid[y][x] = space
+                elif current <= space:
+                    temp_grid[y][x] = base
+
     def _refresh_thermal_state_summary(self) -> None:
         temp_grid = self.world_state.get("temperature_grid", [])
         values = [float(v) for row in temp_grid if isinstance(row, list) for v in row if isinstance(v, (int, float))]
@@ -874,7 +891,7 @@ class SimulationEngine:
 
     def _recompute_compartments(self) -> None:
         grid = self.world_state["grid"]
-        self._ensure_temperature_grid_dimensions()
+        self._sync_temperature_grid_with_tiles()
         temp_grid = self.world_state.get("temperature_grid", [])
         width = self.world_state["world"]["width"]
         height = self.world_state["world"]["height"]
@@ -1138,7 +1155,7 @@ class SimulationEngine:
             compartment["pressure"] = round(next_oxygen / 100, 3)
 
     def _update_temperature(self) -> None:
-        self._ensure_temperature_grid_dimensions()
+        self._sync_temperature_grid_with_tiles()
         grid = self.world_state.get("grid", [])
         temp_grid = self.world_state.get("temperature_grid", [])
         if not grid or not temp_grid:
@@ -1295,8 +1312,11 @@ class SimulationEngine:
             for _ in range(steps):
                 next_pos: tuple[int, int] | None
                 oxygen_here = self._oxygen_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
+                temp_here = self._temperature_at_tile(int(npc["x"]), int(npc["y"]))
                 # Survival constraints always dominate personality/task behavior.
-                if oxygen_here <= SETTINGS.oxygen_safe_min_percent:
+                if temp_here < SETTINGS.thermal_hazard_min_c or temp_here > SETTINGS.thermal_hazard_max_c:
+                    next_pos = self._next_npc_position_for_thermal_safety(int(npc["x"]), int(npc["y"]), grid, width, height)
+                elif oxygen_here <= SETTINGS.oxygen_safe_min_percent:
                     next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
                 elif active_order is not None:
                     target = self._work_order_target(active_order, npc)
@@ -1328,13 +1348,18 @@ class SimulationEngine:
                 npc["x"], npc["y"] = next_pos
 
             oxygen = self._oxygen_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
+            temperature = self._temperature_at_tile(int(npc["x"]), int(npc["y"]))
             if oxygen <= 0.0:
                 npc["health"] = round(float(npc.get("health", 100.0)) - SETTINGS.suffocation_damage_per_tick_at_zero_o2, 2)
+            if temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c:
+                npc["health"] = round(float(npc.get("health", 100.0)) - SETTINGS.thermal_hazard_damage_per_tick, 2)
 
             needs = npc.setdefault("needs", {"hunger": 0.0, "fatigue": 0.0})
             # Deterministic baseline need drift.
             needs["hunger"] = round(min(100.0, float(needs.get("hunger", 0.0)) + 0.2), 2)
             needs["fatigue"] = round(min(100.0, float(needs.get("fatigue", 0.0)) + 0.15), 2)
+            if temperature < SETTINGS.thermal_comfort_min_c or temperature > SETTINGS.thermal_comfort_max_c:
+                needs["fatigue"] = round(min(100.0, float(needs.get("fatigue", 0.0)) + 0.1), 2)
             if needs["hunger"] >= 75.0 or needs["fatigue"] >= 75.0:
                 npc_changes.append(
                     {
@@ -1364,19 +1389,30 @@ class SimulationEngine:
                         "health": round(float(npc.get("health", 100.0)), 2),
                     }
                 )
+            if temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c:
+                npc_changes.append(
+                    {
+                        "type": "npc_thermal_hazard",
+                        "npc_id": npc["id"],
+                        "temperature_c": round(temperature, 2),
+                        "health": round(float(npc.get("health", 100.0)), 2),
+                    }
+                )
 
             if float(npc.get("health", 0.0)) <= 0.0:
                 npc["alive"] = False
                 npc["health"] = 0.0
                 comp_id = index.get(self._xy_key(int(npc["x"]), int(npc["y"])))
+                death_cause = "suffocation" if oxygen <= 0.0 else "thermal_hazard"
                 death_entry = {
                     "npc_id": npc["id"],
                     "name": npc.get("name", npc["id"]),
                     "tick": self.tick,
-                    "cause": "suffocation",
+                    "cause": death_cause,
                     "x": int(npc["x"]),
                     "y": int(npc["y"]),
                     "oxygen_percent_at_death": round(oxygen, 2),
+                    "temperature_c_at_death": round(temperature, 2),
                     "compartment_id": int(comp_id) if comp_id is not None else None,
                     "personality": str(npc.get("personality", "baseline")),
                     "hunger": round(float(npc.get("needs", {}).get("hunger", 0.0)), 2),
@@ -1982,6 +2018,86 @@ class SimulationEngine:
                 return None
             step = parent
         return step
+
+    def _next_npc_position_for_thermal_safety(
+        self,
+        x: int,
+        y: int,
+        grid: list[list[str]],
+        width: int,
+        height: int,
+    ) -> tuple[int, int] | None:
+        current = (x, y)
+        current_temp = self._temperature_at_tile(x, y)
+
+        visited: set[tuple[int, int]] = {current}
+        parents: dict[tuple[int, int], tuple[int, int]] = {}
+        distances: dict[tuple[int, int], int] = {current: 0}
+        frontier: deque[tuple[int, int]] = deque([current])
+
+        best_target = current
+        best_rank = self._thermal_safety_rank(current_temp, 0, x, y)
+
+        while frontier:
+            cx, cy = frontier.popleft()
+            for nx, ny in self._neighbors8(cx, cy, width, height):
+                if (nx, ny) in visited:
+                    continue
+                if grid[ny][nx] not in WALKABLE_TILES:
+                    continue
+
+                visited.add((nx, ny))
+                parents[(nx, ny)] = (cx, cy)
+                distances[(nx, ny)] = distances[(cx, cy)] + 1
+                frontier.append((nx, ny))
+
+                temp = self._temperature_at_tile(nx, ny)
+                rank = self._thermal_safety_rank(temp, distances[(nx, ny)], nx, ny)
+                if rank > best_rank:
+                    best_rank = rank
+                    best_target = (nx, ny)
+
+        if best_target == current:
+            return None
+
+        step = best_target
+        while parents.get(step) != current:
+            parent = parents.get(step)
+            if parent is None:
+                return None
+            step = parent
+        return step
+
+    @staticmethod
+    def _thermal_safety_rank(temp_c: float, distance: int, x: int, y: int) -> tuple[bool, float, int, int, int]:
+        comfort_min = float(SETTINGS.thermal_comfort_min_c)
+        comfort_max = float(SETTINGS.thermal_comfort_max_c)
+        if comfort_min <= temp_c <= comfort_max:
+            comfort_score = 0.0
+            in_comfort = True
+        elif temp_c < comfort_min:
+            comfort_score = temp_c - comfort_min
+            in_comfort = False
+        else:
+            comfort_score = comfort_max - temp_c
+            in_comfort = False
+        return (
+            in_comfort,
+            comfort_score,
+            -distance,
+            -x,
+            -y,
+        )
+
+    def _temperature_at_tile(self, x: int, y: int) -> float:
+        temp_grid = self.world_state.get("temperature_grid", [])
+        if not isinstance(temp_grid, list):
+            return float(SETTINGS.thermal_default_temp_c)
+        if 0 <= y < len(temp_grid) and isinstance(temp_grid[y], list) and 0 <= x < len(temp_grid[y]):
+            value = temp_grid[y][x]
+            if isinstance(value, (int, float)):
+                return float(value)
+        return float(SETTINGS.thermal_default_temp_c)
 
     def _oxygen_at_tile(self, x: int, y: int, index: dict[str, int], compartments: dict[int, dict]) -> float:
         comp_id = index.get(self._xy_key(x, y))

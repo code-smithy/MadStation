@@ -2362,3 +2362,83 @@ def test_phase8a_delta_emits_thermal_state_change_event() -> None:
         assert any(change.get("type") == "thermal_state_change" for change in entity_changes)
 
     asyncio.run(run())
+
+
+def test_phase8b_npc_flees_thermal_hazard_when_path_exists() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(10, 14):
+        engine.world_state["grid"][10][x] = "Floor"
+
+    engine._ensure_temperature_grid_dimensions()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["temperature_grid"][y][x] = 21.0
+    engine.world_state["temperature_grid"][10][10] = 55.0
+    engine.world_state["temperature_grid"][10][11] = 45.0
+    engine.world_state["temperature_grid"][10][12] = 22.0
+    engine.world_state["temperature_grid"][10][13] = 21.0
+
+    engine._recompute_compartments()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-hot",
+            "name": "Hot",
+            "x": 10,
+            "y": 10,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+
+    npc_changes, _, _ = engine._update_npcs()
+
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (11, 10)
+    assert any(change.get("type") == "npc_move" for change in npc_changes)
+
+
+def test_phase8b_trapped_npc_takes_thermal_damage_and_death_cause_is_thermal() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][8][8] = "Floor"
+
+    engine._ensure_temperature_grid_dimensions()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["temperature_grid"][y][x] = 21.0
+    engine.world_state["temperature_grid"][8][8] = 60.0
+
+    engine._recompute_compartments()
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-trapped-hot",
+            "name": "TrappedHot",
+            "x": 8,
+            "y": 8,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 2.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+
+    npc_changes, _, death_log_appends = engine._update_npcs()
+
+    npc = engine.world_state["npcs"][0]
+    assert npc["alive"] is False
+    assert any(change.get("type") == "npc_thermal_hazard" for change in npc_changes)
+    assert death_log_appends
+    assert death_log_appends[-1]["cause"] == "thermal_hazard"
