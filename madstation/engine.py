@@ -899,7 +899,9 @@ class SimulationEngine:
         comp_id = self.world_state.get("compartment_index", {}).get(machine_key)
         if comp_id is not None:
             return f"compartment:{int(comp_id)}"
-        return f"isolated:{machine_key}"
+        # Non-compartment machines (e.g. exterior placements) share a common fallback network
+        # instead of being isolated per-machine key.
+        return "non_compartment"
 
     def _update_power_for_network(self, network_id: str, machine_keys: list[str]) -> dict:
         machines = self.world_state["machines"]

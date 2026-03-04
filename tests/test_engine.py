@@ -2195,3 +2195,23 @@ def test_npc_move_budget_scales_with_tick_rate(monkeypatch) -> None:
     npc = engine.world_state["npcs"][0]
     assert (npc["x"], npc["y"]) == (6, 5)
     assert npc["move_accumulator"] == 0.0
+
+
+def test_power_non_compartment_fallback_network_is_shared() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Vacuum"
+    engine.world_state["machines"] = {
+        "1,1": {"type": "SolarPanel", "enabled": True, "generation_kw": 5.0},
+        "2,1": {"type": "OxygenGenerator", "enabled": True, "consume_kw": 2.0, "rate_per_tick": 2.0},
+        "3,1": {"type": "Battery", "enabled": True, "capacity": 20.0, "stored": 10.0, "discharge_kw": 5.0, "charge_kw": 5.0},
+    }
+    engine._recompute_compartments()
+
+    engine._update_power()
+
+    networks = engine.world_state["power_state"]["networks"]
+    assert len(networks) == 1
+    assert networks[0]["network_id"] == "non_compartment"
+    assert "2,1" in networks[0]["powered_consumers"]
