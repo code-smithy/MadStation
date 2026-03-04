@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MadStation UI MVP</title>
+  <style>
+    :root {
+      --bg: #0e1116;
+      --panel: #131922;
+      --border: #2a3340;
+      --text: #e8edf3;
+      --muted: #98a6b8;
+      --btn: #0b1118;
+      --btn-border: #344254;
+      --vacuum: #030507;
+      --floor: #2f3a46;
+      --wall: #8b98a8;
+      --door: #67b7ff;
+      --airlock: #22c55e;
+      --window: #a78bfa;
+      --npc: #ff5d73;
+      --power-on: #f59e0b;
+      --power-off: #334155;
+    }
+    body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    main { display: grid; grid-template-columns: minmax(420px, 1fr) 340px; gap: 12px; padding: 12px; }
+
+    .viewport { border: 1px solid var(--border); background:#07090d; padding: 10px; overflow: auto; min-height: 72vh; }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(50, 11px);
+      grid-auto-rows: 11px;
+      gap: 1px;
+      width: max-content;
+      background: #000;
+      padding: 1px;
+    }
+    .cell {
+      width: 11px;
+      height: 11px;
+      box-sizing: border-box;
+      border: 1px solid rgba(0,0,0,0.25);
+      position: relative;
+    }
+    .cell.vacuum { background: var(--vacuum); }
+    .cell.floor { background: var(--floor); }
+    .cell.wall { background: var(--wall); }
+    .cell.door { background: var(--door); }
+    .cell.airlock { background: var(--airlock); }
+    .cell.window { background: var(--window); }
+    .cell.npc::after {
+      content: '';
+      position: absolute;
+      inset: 2px;
+      border-radius: 999px;
+      background: var(--npc);
+      box-shadow: 0 0 4px rgba(255, 93, 115, 0.6);
+    }
+
+    .legend { display:flex; gap:8px; flex-wrap:wrap; margin-top: 8px; font-size: 12px; }
+    .legend-item { display:flex; align-items:center; gap:6px; color: var(--muted); }
+    .swatch { width: 12px; height: 12px; border:1px solid #000; }
+
+    .panel { border: 1px solid var(--border); padding: 10px; background: var(--panel); }
+    .panel h3 { margin: 0 0 8px 0; }
+    label { display:block; font-size: 12px; margin-top: 8px; }
+    input, select, button { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 6px; background: var(--btn); color: var(--text); border:1px solid var(--btn-border); }
+    button { cursor: pointer; }
+    #log { white-space: pre-wrap; font-size: 12px; max-height: 220px; overflow:auto; background:#0b1118; padding: 8px; border:1px solid var(--border); }
+    .log-controls { display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:8px; }
+    .log-line { margin: 0 0 4px 0; }
+    .sev-info { color: #93c5fd; }
+    .sev-warn { color: #fbbf24; }
+    .sev-error { color: #f87171; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .tiny { font-size: 11px; }
+    #inspector { white-space: pre-wrap; line-height: 1.35; }
+    #worldStats { white-space: pre-wrap; line-height: 1.35; }
+    .clickable { cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>MadStation Frontend MVP (Phase 7A)</strong>
+    <span id="conn" class="muted">WS: connecting...</span>
+    <span id="tick" class="muted">tick: --</span>
+    <span id="wsUrl" class="muted">ws: --</span>
+  </header>
+
+  <main>
+    <section class="viewport" aria-label="world viewport">
+      <div id="grid" aria-label="world grid"></div>
+      <div class="legend" id="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--vacuum)"></span>Vacuum</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--floor)"></span>Floor</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--wall)"></span>Wall</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--door)"></span>Door</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--airlock)"></span>Airlock</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--window)"></span>Window</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--npc)"></span>NPC</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--power-on)"></span>Power On</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--power-off)"></span>Power Off</span>
+      </div>
+    </section>
+
+    <aside>
+      <div class="panel">
+        <h3>Status</h3>
+        <div id="status" class="muted">loading...</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>View / Inspect</h3>
+        <label>View Mode
+          <select id="viewMode">
+            <option value="tile">Tile Type</option>
+            <option value="compartment">Compartment ID</option>
+            <option value="oxygen">Oxygen Heat</option>
+            <option value="power">Power Network</option>
+          </select>
+        </label>
+        <div id="inspector" class="muted tiny" style="margin-top:8px">Click a tile to inspect.</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>World Stats</h3>
+        <div id="worldStats" class="muted tiny">loading...</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>Build / Deconstruct</h3>
+        <label>X<input id="x" type="number" min="0" max="49" value="20"></label>
+        <label>Y<input id="y" type="number" min="0" max="49" value="20"></label>
+        <label>Tile
+          <select id="tile">
+            <option>Floor</option><option>Wall</option><option>Door</option><option>Airlock</option><option>Window</option>
+          </select>
+        </label>
+        <button id="btnBuild">Send Build</button>
+        <button id="btnDeconstruct">Send Deconstruct</button>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>Create Work Order</h3>
+        <label>Work Type
+          <select id="workType">
+            <option>MineIce</option><option>HaulItem</option><option>RefineIce</option><option>FeedOxygenGenerator</option>
+          </select>
+        </label>
+        <button id="btnWork">Send CreateWorkOrder</button>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>Event Log</h3>
+        <div class="log-controls">
+          <label>Severity
+            <select id="logSeverity">
+              <option value="all">All</option>
+              <option value="info">Info</option>
+              <option value="warn">Warn</option>
+              <option value="error">Error</option>
+            </select>
+          </label>
+          <label>Filter text
+            <input id="logFilterText" type="text" placeholder="contains...">
+          </label>
+        </div>
+        <div id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const gridEl = document.getElementById('grid');
+    const statusEl = document.getElementById('status');
+    const connEl = document.getElementById('conn');
+    const tickEl = document.getElementById('tick');
+    const logEl = document.getElementById('log');
+    const viewModeEl = document.getElementById('viewMode');
+    const inspectorEl = document.getElementById('inspector');
+    const worldStatsEl = document.getElementById('worldStats');
+    const logSeverityEl = document.getElementById('logSeverity');
+    const logFilterTextEl = document.getElementById('logFilterText');
+
+    const randId = () => Math.random().toString(36).slice(2, 10);
+    const val = (id) => document.getElementById(id).value;
+
+    let ws;
+    let wsAttempt = 0;
+    let apiBaseHint = null;
+    let latestWorld = null;
+    const logEntries = [];
+
+    function wsCandidates() {
+      const params = new URLSearchParams(location.search);
+      const fromQuery = params.get('ws');
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const cands = [];
+      if (fromQuery) cands.push(fromQuery);
+      if (location.host) cands.push(`${proto}://${location.host}/ws`);
+      cands.push('ws://127.0.0.1:8000/ws');
+      cands.push('ws://localhost:8000/ws');
+      return Array.from(new Set(cands));
+    }
+
+    function httpBaseFromWs(wsUrl) {
+      try {
+        const parsed = new URL(wsUrl);
+        const proto = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+        return `${proto}//${parsed.host}`;
+      } catch {
+        return null;
+      }
+    }
+
+    function apiBaseCandidates() {
+      const params = new URLSearchParams(location.search);
+      const fromQuery = params.get('api');
+      const cands = [];
+      if (fromQuery) cands.push(fromQuery.replace(/\/$/, ''));
+      if (apiBaseHint) cands.push(apiBaseHint.replace(/\/$/, ''));
+      if (location.origin && location.origin !== 'null') cands.push(location.origin.replace(/\/$/, ''));
+      cands.push('http://127.0.0.1:8000');
+      cands.push('http://localhost:8000');
+      return Array.from(new Set(cands));
+    }
+
+    async function fetchJson(path) {
+      let lastError = null;
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+      for (const base of apiBaseCandidates()) {
+        const url = `${base}${normalizedPath}`;
+        try {
+          const resp = await fetch(url);
+          const contentType = resp.headers.get('content-type') || '';
+          if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${url}`);
+          if (!contentType.toLowerCase().includes('application/json')) {
+            throw new Error(`Non-JSON response from ${url} (content-type=${contentType || 'unknown'})`);
+          }
+          if (apiBaseHint !== base) {
+            apiBaseHint = base;
+          }
+          return await resp.json();
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error(`Unable to fetch ${path}`);
+    }
+
+    function inferSeverity(obj) {
+      const text = (typeof obj === 'string' ? obj : JSON.stringify(obj)).toLowerCase();
+      if (text.includes('error') || text.includes('invalid') || text.includes('disconnected')) return 'error';
+      if (text.includes('rejected') || text.includes('unpowered') || text.includes('warning')) return 'warn';
+      return 'info';
+    }
+
+    function renderLog() {
+      const severity = logSeverityEl.value;
+      const textFilter = (logFilterTextEl.value || '').trim().toLowerCase();
+      const filtered = logEntries.filter((entry) => {
+        if (severity !== 'all' && entry.severity !== severity) return false;
+        if (textFilter && !entry.line.toLowerCase().includes(textFilter)) return false;
+        return true;
+      });
+      logEl.innerHTML = filtered.map((entry) =>
+        `<div class="log-line sev-${entry.severity}">${entry.ts} [${entry.severity}] ${entry.line}</div>`
+      ).join('');
+    }
+
+    function appendLog(obj) {
+      const line = typeof obj === 'string' ? obj : JSON.stringify(obj);
+      logEntries.unshift({
+        ts: new Date().toLocaleTimeString(),
+        severity: inferSeverity(obj),
+        line,
+      });
+      if (logEntries.length > 200) logEntries.length = 200;
+      renderLog();
+    }
+
+    function tileClass(tile) {
+      if (tile === 'Vacuum') return 'vacuum';
+      if (tile === 'Floor') return 'floor';
+      if (tile === 'Wall') return 'wall';
+      if (tile === 'Door') return 'door';
+      if (tile === 'Airlock') return 'airlock';
+      if (tile === 'Window') return 'window';
+      return 'vacuum';
+    }
+
+    function compartmentClass(compartmentId) {
+      if (!compartmentId) return 'vacuum';
+      const bucket = Math.abs(Number(compartmentId)) % 6;
+      if (bucket === 0) return 'floor';
+      if (bucket === 1) return 'door';
+      if (bucket === 2) return 'window';
+      if (bucket === 3) return 'airlock';
+      if (bucket === 4) return 'wall';
+      return 'floor';
+    }
+
+    function oxygenClass(oxygenPct) {
+      if (!Number.isFinite(oxygenPct)) return 'vacuum';
+      if (oxygenPct < 5) return 'vacuum';
+      if (oxygenPct < 40) return 'door';
+      if (oxygenPct < 80) return 'airlock';
+      return 'floor';
+    }
+
+
+    function powerClass(powerOn) {
+      return powerOn ? 'door' : 'wall';
+    }
+
+    function compartmentPowerMap(world) {
+      const out = new Map();
+      const networks = world?.power_state?.networks || [];
+      for (const net of networks) {
+        const on = Boolean(net?.powered_consumers) || Number(net?.generation || 0) > 0 || Number(net?.battery_discharge || 0) > 0;
+        for (const compId of net?.compartment_ids || []) {
+          out.set(String(compId), on);
+        }
+      }
+      return out;
+    }
+
+    function refreshWorldStats(world) {
+      const compartments = (world?.compartments || []).length;
+      const machines = (world?.machines || []).length;
+      const npcs = normalizeNpcList(world?.npcs).filter((n) => n?.alive !== false).length;
+      const power = world?.power_state || {};
+      const networks = (power.networks || []).length;
+      worldStatsEl.textContent = [
+        `compartments=${compartments}`,
+        `machines=${machines}`,
+        `alive_npcs=${npcs}`,
+        `power_gen=${power.generation ?? 0}`,
+        `power_demand=${power.demand ?? 0}`,
+        `power_networks=${networks}`
+      ].join('
+');
+    }
+
+    function mapById(list) {
+      const out = new Map();
+      for (const item of list || []) {
+        if (item && item.id != null) out.set(String(item.id), item);
+      }
+      return out;
+    }
+
+    function inspectAt(x, y) {
+      if (!latestWorld) return;
+      const tile = latestWorld.grid?.[y]?.[x];
+      const compId = latestWorld.compartment_index?.[`${x},${y}`] ?? null;
+      const compartmentMap = mapById(latestWorld.compartments || []);
+      const compartment = compartmentMap.get(String(compId)) || null;
+      const npcs = normalizeNpcList(latestWorld.npcs).filter((n) => n && n.x === x && n.y === y && n.alive !== false);
+      const machines = (latestWorld.machines || []).filter((m) => m && m.location && m.location.x === x && m.location.y === y);
+      const lines = [
+        `tile: ${tile ?? 'unknown'} @ (${x},${y})`,
+        `compartment: ${compId ?? 'none'}`
+      ];
+      if (compartment) lines.push(`oxygen=${compartment.oxygen_percent}% pressure=${compartment.pressure}`);
+      if (npcs.length) lines.push(`npcs: ${npcs.map((n) => n.name || n.id).join(', ')}`);
+      if (machines.length) lines.push(`machines: ${machines.map((m) => m.type || m.id).join(', ')}`);
+      const powerMap = compartmentPowerMap(latestWorld);
+      if (compId != null && powerMap.has(String(compId))) lines.push(`power_network: ${powerMap.get(String(compId)) ? 'powered' : 'unpowered'}`);
+      inspectorEl.textContent = lines.join('\n');
+    }
+
+    function normalizeNpcList(rawNpcs) {
+      if (Array.isArray(rawNpcs)) return rawNpcs;
+      if (rawNpcs && typeof rawNpcs === 'object') return Object.values(rawNpcs);
+      return [];
+    }
+
+    function normalizeGrid(rawGrid) {
+      if (!Array.isArray(rawGrid)) return [];
+      if (rawGrid.length === 0) return [];
+      if (Array.isArray(rawGrid[0])) return rawGrid;
+      if (typeof rawGrid[0] === 'string') {
+        return rawGrid.map((row) => String(row).split(''));
+      }
+      return [];
+    }
+
+    async function refreshWorld() {
+      const payload = await fetchJson('/world');
+      const world = payload.world;
+      latestWorld = world;
+      tickEl.textContent = `tick: ${payload.tick}`;
+
+      const grid = normalizeGrid(world.grid);
+      if (!grid.length) {
+        gridEl.innerHTML = '<div class="muted">No grid data available yet.</div>';
+        return;
+      }
+
+      const npcByPos = new Set(normalizeNpcList(world.npcs)
+        .filter((n) => n && n.alive !== false)
+        .map((n) => `${n.x},${n.y}`));
+      const compMap = mapById(world.compartments || []);
+      const powerMap = compartmentPowerMap(world);
+
+      const cells = [];
+      for (let y = 0; y < grid.length; y++) {
+        const row = grid[y];
+        for (let x = 0; x < row.length; x++) {
+          const tile = row[x];
+          const compId = world.compartment_index?.[`${x},${y}`] ?? null;
+          const oxygenPct = compMap.get(String(compId))?.oxygen_percent;
+          let cls = tileClass(tile);
+          if (viewModeEl.value === 'compartment') cls = compartmentClass(compId);
+          if (viewModeEl.value === 'oxygen') cls = oxygenClass(oxygenPct);
+          if (viewModeEl.value === 'power') cls = powerClass(powerMap.get(String(compId)));
+          const npc = npcByPos.has(`${x},${y}`) ? ' npc' : '';
+          cells.push(`<div class="cell clickable ${cls}${npc}" data-x="${x}" data-y="${y}" title="${x},${y} ${tile}"></div>`);
+        }
+      }
+      refreshWorldStats(world);
+      gridEl.style.gridTemplateColumns = `repeat(${grid[0].length}, 11px)`;
+      gridEl.innerHTML = cells.join('');
+      gridEl.querySelectorAll('.cell').forEach((cell) => {
+        cell.addEventListener('click', () => inspectAt(Number(cell.dataset.x), Number(cell.dataset.y)));
+      });
+    }
+
+    async function refreshStatus() {
+      const s = await fetchJson('/status');
+      statusEl.textContent = [
+        `tick=${s.tick}`,
+        `queued=${s.queued_commands}`,
+        `alive_npc=${s.alive_npc_count}`,
+        `work_orders=${s.work_order_count}`,
+        `replay_entries=${s.replay_log_entries}`,
+        `queue_last=${s.queue_depth_last}`,
+        `idle_ratio=${s.idle_npc_ratio_last}`
+      ].join('\n');
+    }
+
+    function connectWs() {
+      const candidates = wsCandidates();
+      const target = candidates[wsAttempt % candidates.length];
+      wsAttempt += 1;
+      document.getElementById('wsUrl').textContent = `ws: ${target}`;
+      const derivedApiBase = httpBaseFromWs(target);
+      if (derivedApiBase) apiBaseHint = derivedApiBase;
+
+      try {
+        ws = new WebSocket(target);
+      } catch (err) {
+        connEl.textContent = `WS: connect error`;
+        appendLog({ ws_error: String(err) });
+        setTimeout(connectWs, 1200);
+        return;
+      }
+
+      ws.onopen = () => {
+        connEl.textContent = 'WS: connected';
+        appendLog({ ws_connected: target });
+      };
+      ws.onclose = () => {
+        connEl.textContent = 'WS: disconnected';
+        appendLog({ ws_disconnected: target });
+        setTimeout(connectWs, 1200);
+      };
+      ws.onerror = () => {
+        connEl.textContent = 'WS: error';
+      };
+      ws.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
+        if (data.type === 'delta_tick' || data.type === 'snapshot_full') {
+          refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+          refreshStatus().catch((err) => appendLog({ status_refresh_error: String(err) }));
+        }
+        if (data.result) appendLog(data);
+      };
+    }
+
+    function send(payload) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        appendLog('ws not connected');
+        return;
+      }
+      ws.send(JSON.stringify(payload));
+      appendLog({sent: payload});
+    }
+
+    document.getElementById('btnBuild').onclick = () => send({
+      client_command_id: `build-${randId()}`,
+      type: 'Build',
+      payload: { x: Number(val('x')), y: Number(val('y')), tile_type: val('tile') }
+    });
+
+    document.getElementById('btnDeconstruct').onclick = () => send({
+      client_command_id: `decon-${randId()}`,
+      type: 'Deconstruct',
+      payload: { x: Number(val('x')), y: Number(val('y')) }
+    });
+
+    document.getElementById('btnWork').onclick = () => send({
+      client_command_id: `wo-${randId()}`,
+      type: 'CreateWorkOrder',
+      payload: { work_type: val('workType'), location: { x: Number(val('x')), y: Number(val('y')) } }
+    });
+
+    viewModeEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+    logSeverityEl.onchange = renderLog;
+    logFilterTextEl.oninput = renderLog;
+
+    connectWs();
+    refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+    refreshStatus().catch((err) => appendLog({ status_refresh_error: String(err) }));
+    setInterval(refreshStatus, 1000);
+  </script>
+</body>
+</html>
