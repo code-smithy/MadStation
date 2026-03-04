@@ -1,11 +1,15 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 
 from madstation.engine import SimulationEngine
 from madstation.protocol import ClientCommand, CommandAck, CommandResult
 
-engine = SimulationEngine()
+engine = SimulationEngine(load_snapshot=True)
+
+FRONTEND_INDEX_PATH = Path(__file__).resolve().parent / "frontend" / "index.html"
 
 
 @asynccontextmanager
@@ -21,13 +25,20 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="MadStation", lifespan=lifespan)
 
 
+
+@app.get("/", response_class=HTMLResponse)
+async def frontend_index() -> HTMLResponse:
+    if FRONTEND_INDEX_PATH.exists():
+        return HTMLResponse(FRONTEND_INDEX_PATH.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>MadStation UI missing</h1>", status_code=500)
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/status")
-async def status() -> dict[str, int]:
+async def status() -> dict[str, object]:
     return engine.runtime_status()
 
 
