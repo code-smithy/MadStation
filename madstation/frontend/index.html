@@ -68,6 +68,9 @@
     button { cursor: pointer; }
     #log { white-space: pre-wrap; font-size: 12px; max-height: 220px; overflow:auto; background:#0b1118; padding: 8px; border:1px solid var(--border); }
     .muted { color: var(--muted); font-size: 12px; }
+    .tiny { font-size: 11px; }
+    #inspector { white-space: pre-wrap; line-height: 1.35; }
+    .clickable { cursor: crosshair; }
   </style>
 </head>
 <body>
@@ -96,6 +99,18 @@
       <div class="panel">
         <h3>Status</h3>
         <div id="status" class="muted">loading...</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>View / Inspect</h3>
+        <label>View Mode
+          <select id="viewMode">
+            <option value="tile">Tile Type</option>
+            <option value="compartment">Compartment ID</option>
+            <option value="oxygen">Oxygen Heat</option>
+          </select>
+        </label>
+        <div id="inspector" class="muted tiny" style="margin-top:8px">Click a tile to inspect.</div>
       </div>
 
       <div class="panel" style="margin-top:10px">
@@ -134,6 +149,8 @@
     const connEl = document.getElementById('conn');
     const tickEl = document.getElementById('tick');
     const logEl = document.getElementById('log');
+    const viewModeEl = document.getElementById('viewMode');
+    const inspectorEl = document.getElementById('inspector');
 
     const randId = () => Math.random().toString(36).slice(2, 10);
     const val = (id) => document.getElementById(id).value;
@@ -141,6 +158,7 @@
     let ws;
     let wsAttempt = 0;
     let apiBaseHint = null;
+    let latestWorld = null;
 
     function wsCandidates() {
       const params = new URLSearchParams(location.search);
@@ -215,6 +233,51 @@
       return 'vacuum';
     }
 
+    function compartmentClass(compartmentId) {
+      if (!compartmentId) return 'vacuum';
+      const bucket = Math.abs(Number(compartmentId)) % 6;
+      if (bucket === 0) return 'floor';
+      if (bucket === 1) return 'door';
+      if (bucket === 2) return 'window';
+      if (bucket === 3) return 'airlock';
+      if (bucket === 4) return 'wall';
+      return 'floor';
+    }
+
+    function oxygenClass(oxygenPct) {
+      if (!Number.isFinite(oxygenPct)) return 'vacuum';
+      if (oxygenPct < 5) return 'vacuum';
+      if (oxygenPct < 40) return 'door';
+      if (oxygenPct < 80) return 'airlock';
+      return 'floor';
+    }
+
+    function mapById(list) {
+      const out = new Map();
+      for (const item of list || []) {
+        if (item && item.id != null) out.set(String(item.id), item);
+      }
+      return out;
+    }
+
+    function inspectAt(x, y) {
+      if (!latestWorld) return;
+      const tile = latestWorld.grid?.[y]?.[x];
+      const compId = latestWorld.compartment_index?.[`${x},${y}`] ?? null;
+      const compartmentMap = mapById(latestWorld.compartments || []);
+      const compartment = compartmentMap.get(String(compId)) || null;
+      const npcs = normalizeNpcList(latestWorld.npcs).filter((n) => n && n.x === x && n.y === y && n.alive !== false);
+      const machines = (latestWorld.machines || []).filter((m) => m && m.location && m.location.x === x && m.location.y === y);
+      const lines = [
+        `tile: ${tile ?? 'unknown'} @ (${x},${y})`,
+        `compartment: ${compId ?? 'none'}`
+      ];
+      if (compartment) lines.push(`oxygen=${compartment.oxygen_percent}% pressure=${compartment.pressure}`);
+      if (npcs.length) lines.push(`npcs: ${npcs.map((n) => n.name || n.id).join(', ')}`);
+      if (machines.length) lines.push(`machines: ${machines.map((m) => m.type || m.id).join(', ')}`);
+      inspectorEl.textContent = lines.join('\n');
+    }
+
     function normalizeNpcList(rawNpcs) {
       if (Array.isArray(rawNpcs)) return rawNpcs;
       if (rawNpcs && typeof rawNpcs === 'object') return Object.values(rawNpcs);
@@ -234,6 +297,7 @@
     async function refreshWorld() {
       const payload = await fetchJson('/world');
       const world = payload.world;
+      latestWorld = world;
       tickEl.textContent = `tick: ${payload.tick}`;
 
       const grid = normalizeGrid(world.grid);
@@ -245,18 +309,27 @@
       const npcByPos = new Set(normalizeNpcList(world.npcs)
         .filter((n) => n && n.alive !== false)
         .map((n) => `${n.x},${n.y}`));
+      const compMap = mapById(world.compartments || []);
 
       const cells = [];
       for (let y = 0; y < grid.length; y++) {
         const row = grid[y];
         for (let x = 0; x < row.length; x++) {
-          const cls = tileClass(row[x]);
+          const tile = row[x];
+          const compId = world.compartment_index?.[`${x},${y}`] ?? null;
+          const oxygenPct = compMap.get(String(compId))?.oxygen_percent;
+          let cls = tileClass(tile);
+          if (viewModeEl.value === 'compartment') cls = compartmentClass(compId);
+          if (viewModeEl.value === 'oxygen') cls = oxygenClass(oxygenPct);
           const npc = npcByPos.has(`${x},${y}`) ? ' npc' : '';
-          cells.push(`<div class="cell ${cls}${npc}" title="${x},${y} ${row[x]}"></div>`);
+          cells.push(`<div class="cell clickable ${cls}${npc}" data-x="${x}" data-y="${y}" title="${x},${y} ${tile}"></div>`);
         }
       }
       gridEl.style.gridTemplateColumns = `repeat(${grid[0].length}, 11px)`;
       gridEl.innerHTML = cells.join('');
+      gridEl.querySelectorAll('.cell').forEach((cell) => {
+        cell.addEventListener('click', () => inspectAt(Number(cell.dataset.x), Number(cell.dataset.y)));
+      });
     }
 
     async function refreshStatus() {
@@ -337,6 +410,8 @@
       type: 'CreateWorkOrder',
       payload: { work_type: val('workType'), location: { x: Number(val('x')), y: Number(val('y')) } }
     });
+
+    viewModeEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
 
     connectWs();
     refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));

@@ -37,6 +37,13 @@ Use this checklist to validate the frontend MVP.
 2. Confirm websocket deltas continue refreshing grid/status without manual reload.
 
 
+
+## 6) View mode + tile inspector
+
+1. Switch **View Mode** between Tile Type, Compartment ID, and Oxygen Heat.
+2. Confirm the map recolors immediately for each mode.
+3. Click a few cells and verify inspector details include tile + coordinates and, when applicable, compartment oxygen/pressure.
+
 ## Troubleshooting
 
 - If WS remains disconnected, check the displayed `ws:` target in the header.

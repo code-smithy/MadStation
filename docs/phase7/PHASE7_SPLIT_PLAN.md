@@ -13,7 +13,9 @@ Phase 7 focuses on a minimal operator-facing frontend first, then richer UX poli
 ## Phase 7B (planned)
 
 - Improve command ergonomics (tile inspector, machine quick-actions, work-order metadata forms).
+- Added View Mode selector (Tile/Compartment/Oxygen) and click-to-inspect tile detail panel. ✅
 - Add focused visualization layers (power overlays, oxygen/compartment overlays, npc/work-order highlights).
+- Added compartment and oxygen visualization modes in the main grid. ✅
 - Add frontend-side deterministic event feed filtering and severity tags.
 
 ## Exit target for Phase 7
