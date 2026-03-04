@@ -19,12 +19,13 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
   - Split plan + tasklist + user testing are documented in `docs/phase8/PHASE8_SPLIT_PLAN.md`, `docs/phase8/TASKLIST.md`, and `docs/phase8/USER_SIDE_TESTING.md`.
 - **Status:** Completed in Phase 8 (8A/8B/8C).
 
-### [ ] P1 — Door power-loss behavior model
-- **Problem:** Door behavior under power loss is still deferred.
+### [x] P1 — Door power-loss behavior model
+- **Problem (historical):** Door behavior under power loss was deferred.
 - **Goal:** Define deterministic door state transitions when local power is lost/recovered.
 - **Done when:**
   - Powered/unpowered door transitions are deterministic across replay.
   - Tests cover power-loss close/open behavior and compartment effects.
+- **Status:** Completed with deterministic local-network power gating in door auto-state logic.
 
 ### [x] P1 — Enforce placement constraints
 - **Problem (historical):** Build placement allowed future-ready invalid placements.

@@ -33,6 +33,7 @@ class Settings:
     thermal_hazard_min_c: float = 0.0
     thermal_hazard_max_c: float = 38.0
     thermal_hazard_damage_per_tick: float = 3.0
+    door_requires_local_power: bool = True
 
 
 SETTINGS = Settings()

@@ -908,7 +908,58 @@ class SimulationEngine:
             tile = self.world_state["grid"][ny][nx]
             if tile in COMPARTMENT_FILL_TILES:
                 interior_neighbors += 1
-        return interior_neighbors >= 2
+
+        if interior_neighbors < 2:
+            return False
+
+        if bool(getattr(SETTINGS, "door_requires_local_power", False)):
+            has_power, has_power_network = self._door_local_power_state(x, y)
+            if has_power_network and not has_power:
+                return False
+
+        return True
+
+    def _door_local_power_state(self, x: int, y: int) -> tuple[bool, bool]:
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        index = self.world_state.get("compartment_index", {})
+        adjacent_compartments: set[int] = set()
+
+        for nx, ny in self._neighbors4(x, y, width, height):
+            tile = self.world_state["grid"][ny][nx]
+            if tile not in COMPARTMENT_FILL_TILES:
+                continue
+            comp_id = index.get(self._xy_key(nx, ny))
+            if comp_id is None:
+                continue
+            adjacent_compartments.add(int(comp_id))
+
+        if not adjacent_compartments:
+            return False, False
+
+        networks = self.world_state.get("power_state", {}).get("networks", [])
+        if not isinstance(networks, list):
+            return False, False
+
+        network_map: dict[str, dict] = {}
+        for network in networks:
+            if not isinstance(network, dict):
+                continue
+            network_id = network.get("network_id")
+            if isinstance(network_id, str):
+                network_map[network_id] = network
+
+        has_known_network = False
+        for compartment_id in sorted(adjacent_compartments):
+            network = network_map.get(f"compartment:{compartment_id}")
+            if network is None:
+                continue
+            has_known_network = True
+            supply_kw = float(network.get("generation", 0.0)) + float(network.get("battery_discharge", 0.0))
+            if supply_kw > 0.0:
+                return True, True
+
+        return False, has_known_network
 
     def _recompute_compartments(self) -> None:
         grid = self.world_state["grid"]

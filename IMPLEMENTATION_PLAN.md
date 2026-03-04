@@ -179,7 +179,7 @@
 
 ## Immediate Backlog (Post-Phase-8 follow-ons)
 
-1. [ ] Door power-loss behavior model (deferred from early phases).
+1. [x] Door power-loss behavior model (deferred from early phases).
 2. [x] Enforce placement constraints currently documented as future-ready.
 3. [ ] Add topology-aware (non-global) storage access constraints.
 4. [ ] Expand deterministic replay/stress harness for larger command streams.

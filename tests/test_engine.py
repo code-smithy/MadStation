@@ -427,6 +427,62 @@ def test_delta_includes_compartment_changes_after_breach() -> None:
 
 
 
+def test_door_power_loss_closes_and_recovery_reopens_with_compartment_effects() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+
+    # Build a tiny powered corridor with a separating door.
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in (20, 21, 22):
+        engine.world_state["grid"][20][x] = "Floor"
+    engine.world_state["grid"][20][21] = "Door"
+    engine.world_state["door_states"]["21,20"] = {"open": False}
+
+    # Local power producer in adjacent compartment.
+    engine.world_state["machines"] = {
+        "20,20": {"type": "Reactor", "enabled": True, "generation_kw": 6.0}
+    }
+
+    engine._recompute_compartments()
+    engine._update_power()
+    open_changes = engine._auto_update_doors()
+    assert any(c.get("type") == "door_state" and c.get("door_open_after") is True for c in open_changes)
+    assert engine.world_state["door_states"]["21,20"]["open"] is True
+
+    engine._recompute_compartments()
+
+    # Open-door compartment effect: oxygen should diffuse across compartments.
+    engine.world_state["compartments"][0]["oxygen_percent"] = 80.0
+    engine.world_state["compartments"][1]["oxygen_percent"] = 20.0
+    engine._update_oxygen()
+    open_values = [float(c["oxygen_percent"]) for c in engine.world_state["compartments"]]
+    open_gap = abs(open_values[0] - open_values[1])
+    assert open_gap < 60.0
+
+    # Simulate local power loss: door should close and diffusion path should stop.
+    engine.world_state["machines"]["20,20"]["enabled"] = False
+    engine._update_power()
+    close_changes = engine._auto_update_doors()
+    assert any(c.get("type") == "door_state" and c.get("door_open_after") is False for c in close_changes)
+    assert engine.world_state["door_states"]["21,20"]["open"] is False
+
+    engine._recompute_compartments()
+    engine.world_state["compartments"][0]["oxygen_percent"] = 80.0
+    engine.world_state["compartments"][1]["oxygen_percent"] = 20.0
+    engine._update_oxygen()
+    closed_values = [float(c["oxygen_percent"]) for c in engine.world_state["compartments"]]
+    closed_gap = abs(closed_values[0] - closed_values[1])
+    assert closed_gap >= open_gap
+
+    # Simulate recovery: door reopens deterministically.
+    engine.world_state["machines"]["20,20"]["enabled"] = True
+    engine._update_power()
+    reopen_changes = engine._auto_update_doors()
+    assert any(c.get("type") == "door_state" and c.get("door_open_after") is True for c in reopen_changes)
+    assert engine.world_state["door_states"]["21,20"]["open"] is True
+
+
 def test_oxygen_generator_machine_increases_compartment_oxygen() -> None:
     async def run() -> None:
         engine = SimulationEngine()
