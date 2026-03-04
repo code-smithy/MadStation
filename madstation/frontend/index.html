@@ -265,9 +265,9 @@
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const cands = [];
       if (fromQuery) cands.push(fromQuery);
-      if (location.host) cands.push(`${proto}://${location.host}/ws`);
       cands.push('ws://127.0.0.1:8000/ws');
       cands.push('ws://localhost:8000/ws');
+      if (location.host) cands.push(`${proto}://${location.host}/ws`);
       return Array.from(new Set(cands));
     }
 
@@ -287,9 +287,9 @@
       const cands = [];
       if (fromQuery) cands.push(fromQuery.replace(/\/$/, ''));
       if (apiBaseHint) cands.push(apiBaseHint.replace(/\/$/, ''));
-      if (location.origin && location.origin !== 'null') cands.push(location.origin.replace(/\/$/, ''));
       cands.push('http://127.0.0.1:8000');
       cands.push('http://localhost:8000');
+      if (location.origin && location.origin !== 'null') cands.push(location.origin.replace(/\/$/, ''));
       return Array.from(new Set(cands));
     }
 
