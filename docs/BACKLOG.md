@@ -16,7 +16,7 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
   - Temperature fields and thermal updates are deterministic and observable.
   - Heaters/coolers and machine heat affect tiles with power gating.
   - NPCs flee dangerous thermal zones when feasible.
-  - Split plan + user testing are documented in `docs/phase8/PHASE8_SPLIT_PLAN.md` and `docs/phase8/USER_SIDE_TESTING.md`.
+  - Split plan + tasklist + user testing are documented in `docs/phase8/PHASE8_SPLIT_PLAN.md`, `docs/phase8/TASKLIST.md`, and `docs/phase8/USER_SIDE_TESTING.md`.
 
 ### P1 — Door power-loss behavior model
 - **Problem:** Door behavior under power loss is still deferred.

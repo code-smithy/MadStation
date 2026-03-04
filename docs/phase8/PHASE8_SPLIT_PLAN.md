@@ -33,3 +33,8 @@ Phase 8 adds deterministic temperature gameplay and thermal operator workflows.
 
 **Exit criteria**
 - Operators can run temperature scenarios entirely from UI.
+
+
+## Execution tasklist
+
+Track implementation state in `docs/phase8/TASKLIST.md`.
