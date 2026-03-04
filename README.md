@@ -27,6 +27,9 @@
 - `docs/phase8/TASKLIST.md`
 - `docs/phase8/TEMPERATURE_GAMEPLAY_PLAN.md`
 - `docs/phase8/USER_SIDE_TESTING.md`
+- `docs/phase9/PHASE9_SPLIT_PLAN.md`
+- `docs/phase9/TASKLIST.md`
+- `docs/phase9/USER_SIDE_TESTING.md`
 - `docs/BACKLOG.md`
 - `docs/RELEASE_CHECKLIST.md`
 

@@ -190,6 +190,7 @@
 9. [ ] Add performance profiling pass for >5 concurrent clients.
 10. [x] Add explicit release checklist tying docs, tests, and runtime observability.
 11. [x] Add deterministic temperature simulation (vacuum cooling, machine heat, heaters/coolers).
+12. [x] Add NPC item equipment system (hands/clothes/backpack slots, mining prerequisite, spacesuit protection).
 
 Detailed backlog tracking lives in `docs/BACKLOG.md` and release-gate execution lives in `docs/RELEASE_CHECKLIST.md`.
 

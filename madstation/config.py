@@ -34,6 +34,10 @@ class Settings:
     thermal_hazard_max_c: float = 38.0
     thermal_hazard_damage_per_tick: float = 3.0
     door_requires_local_power: bool = True
+    npc_backpack_slot_count: int = 4
+    npc_base_carry_weight: float = 8.0
+    npc_backpack_bonus_carry_weight: float = 16.0
+    npc_pressure_damage_per_tick_at_zero: float = 4.0
 
 
 SETTINGS = Settings()

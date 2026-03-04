@@ -1455,6 +1455,8 @@ def test_phase5_foundation_mine_ice_creates_item_and_haul_order() -> None:
             "alive": True,
             "personality": "baseline",
             "current_work_order_id": "wo-mine-1",
+            "equipment": {"hands": ["MiningLaser", None], "clothes": None, "backpack": None},
+            "inventory": [],
             "needs": {"hunger": 0.0, "fatigue": 0.0},
         }
     ]
@@ -1526,6 +1528,8 @@ def test_mine_ice_auto_haul_targets_reachable_storage_only() -> None:
             "alive": True,
             "personality": "baseline",
             "current_work_order_id": "wo-mine-1",
+            "equipment": {"hands": ["MiningLaser", None], "clothes": None, "backpack": None},
+            "inventory": [],
             "needs": {"hunger": 0.0, "fatigue": 0.0},
         }
     ]
@@ -1925,6 +1929,8 @@ def test_phase5_end_to_end_chain_mine_to_feed_completes_without_teleportation() 
             "alive": True,
             "personality": "baseline",
             "current_work_order_id": "wo-mine-chain",
+            "equipment": {"hands": ["MiningLaser", None], "clothes": None, "backpack": None},
+            "inventory": [],
             "needs": {"hunger": 0.0, "fatigue": 0.0},
         }
     ]
@@ -2743,3 +2749,120 @@ def test_phase8_end_to_end_acceptance_coverage() -> None:
     # 8) Thermal state remains represented after updates.
     thermal = engine.world_state.get("thermal_state", {})
     assert set(["avg_temp_c", "min_temp_c", "max_temp_c", "danger_tile_count"]).issubset(thermal.keys())
+
+
+def test_phase9_npc_auto_equips_tools_suit_and_backpack() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-equip",
+            "name": "Equip",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["items"] = [
+        {"id": "item-laser", "item_type": "MiningLaser", "location": {"x": 20, "y": 20}, "holder_npc_id": None, "weight": 5.0},
+        {"id": "item-suit", "item_type": "SpaceSuit", "location": {"x": 20, "y": 20}, "holder_npc_id": None, "weight": 8.0},
+        {"id": "item-pack", "item_type": "Backpack", "location": {"x": 20, "y": 20}, "holder_npc_id": None, "weight": 2.0},
+    ]
+
+    npc_changes, _, _ = engine._update_npcs()
+
+    npc = engine.world_state["npcs"][0]
+    equip = npc["equipment"]
+    assert "MiningLaser" in equip["hands"]
+    assert equip["clothes"] == "SpaceSuit"
+    assert equip["backpack"] == "Backpack"
+    assert any(c.get("type") == "npc_item_equipped" for c in npc_changes)
+
+
+def test_phase9_mine_ice_requires_mining_laser() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Floor"
+
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-miner",
+            "name": "Miner",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-mine",
+            "equipment": {"hands": [None, None], "clothes": None, "backpack": None},
+            "inventory": [],
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-mine",
+            "work_type": "MineIce",
+            "status": "Assigned",
+            "assignee_npc_id": "npc-miner",
+            "location": {"x": 20, "y": 20},
+            "created_tick": 0,
+            "progress": 0,
+            "required_progress": 1,
+            "item_type": "IceChunk",
+        }
+    ]
+
+    _, work_changes, _ = engine._update_npcs()
+    assert any(c.get("type") == "work_order_unassigned" and c.get("reason") == "missing_mining_laser" for c in work_changes)
+
+    engine.world_state["npcs"][0]["equipment"]["hands"][0] = "MiningLaser"
+    engine.world_state["npcs"][0]["current_work_order_id"] = "wo-mine"
+    engine.world_state["work_orders"][0]["status"] = "Assigned"
+    engine.world_state["work_orders"][0]["assignee_npc_id"] = "npc-miner"
+    engine.world_state["work_orders"][0]["progress"] = 1
+
+    npc_changes, work_changes2, _ = engine._update_npcs()
+    assert any(c.get("type") == "item_created" and c.get("item_type") == "IceChunk" for c in npc_changes)
+    assert any(c.get("type") == "work_order_completed" for c in work_changes2)
+
+
+def test_phase9_spacesuit_protects_against_hazard_damage() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][10][10] = "Floor"
+    engine._sync_temperature_grid_with_tiles()
+    engine.world_state["temperature_grid"][10][10] = 60.0
+    engine._recompute_compartments()
+    engine.world_state["compartments"][0]["oxygen_percent"] = 0.0
+    engine.world_state["compartments"][0]["pressure"] = 0.0
+
+    base_npc = {
+        "id": "npc", "name": "Npc", "x": 10, "y": 10, "speed": 1, "move_accumulator": 0.0,
+        "health": 100.0, "alive": True, "personality": "baseline", "current_work_order_id": None,
+        "equipment": {"hands": [None, None], "clothes": None, "backpack": None},
+        "inventory": [], "needs": {"hunger": 0.0, "fatigue": 0.0},
+    }
+
+    engine.world_state["npcs"] = [dict(base_npc)]
+    engine._update_npcs()
+    no_suit_health = engine.world_state["npcs"][0]["health"]
+
+    suited = dict(base_npc)
+    suited["equipment"] = {"hands": [None, None], "clothes": "SpaceSuit", "backpack": None}
+    engine.world_state["npcs"] = [suited]
+    engine._update_npcs()
+    suit_health = engine.world_state["npcs"][0]["health"]
+
+    assert no_suit_health < 100.0
+    assert suit_health == 100.0

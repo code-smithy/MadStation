@@ -42,6 +42,17 @@ POWER_PRIORITY = dict(SETTINGS.power_priority_tiers)
 SUPPORTED_COMMAND_WORK_TYPES = {"MineIce", "HaulItem", "RefineIce", "FeedOxygenGenerator"}
 WORK_TYPES_WITH_ITEM = {"HaulItem", "RefineIce", "FeedOxygenGenerator"}
 
+ITEM_MINING_LASER = "MiningLaser"
+ITEM_SPACE_SUIT = "SpaceSuit"
+ITEM_BACKPACK = "Backpack"
+ITEM_WEIGHT_BY_TYPE = {
+    "IceChunk": 3.0,
+    "WaterUnit": 2.0,
+    ITEM_MINING_LASER: 5.0,
+    ITEM_SPACE_SUIT: 8.0,
+    ITEM_BACKPACK: 2.0,
+}
+
 
 @dataclass
 class PendingCommand:
@@ -961,6 +972,142 @@ class SimulationEngine:
 
         return False, has_known_network
 
+
+    def _ensure_npc_defaults(self) -> None:
+        for npc in self.world_state.get("npcs", []):
+            equipment = npc.get("equipment")
+            if not isinstance(equipment, dict):
+                equipment = {"hands": [None, None], "clothes": None, "backpack": None}
+                npc["equipment"] = equipment
+            hands = equipment.get("hands")
+            if not isinstance(hands, list) or len(hands) != 2:
+                equipment["hands"] = [None, None]
+            else:
+                equipment["hands"] = [self._normalize_equipped_item(v) for v in hands]
+            equipment["clothes"] = self._normalize_equipped_item(equipment.get("clothes"))
+            equipment["backpack"] = self._normalize_equipped_item(equipment.get("backpack"))
+
+            inv = npc.get("inventory")
+            if not isinstance(inv, list):
+                npc["inventory"] = []
+            else:
+                npc["inventory"] = [str(v) for v in inv if isinstance(v, str)]
+
+    @staticmethod
+    def _normalize_equipped_item(value: object) -> str | None:
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _npc_has_equipped_item(self, npc: dict, item_type: str) -> bool:
+        equipment = npc.get("equipment", {})
+        if not isinstance(equipment, dict):
+            return False
+        hands = equipment.get("hands", [])
+        if isinstance(hands, list) and any(v == item_type for v in hands):
+            return True
+        return equipment.get("clothes") == item_type or equipment.get("backpack") == item_type
+
+    def _npc_has_spacesuit(self, npc: dict) -> bool:
+        return self._npc_has_equipped_item(npc, ITEM_SPACE_SUIT)
+
+    def _npc_backpack_slots(self, npc: dict) -> int:
+        return int(SETTINGS.npc_backpack_slot_count) if self._npc_has_equipped_item(npc, ITEM_BACKPACK) else 0
+
+    def _npc_carry_capacity_weight(self, npc: dict) -> float:
+        base = float(SETTINGS.npc_base_carry_weight)
+        if self._npc_has_equipped_item(npc, ITEM_BACKPACK):
+            base += float(SETTINGS.npc_backpack_bonus_carry_weight)
+        return base
+
+    def _npc_inventory_weight(self, npc: dict) -> float:
+        total = 0.0
+        item_map: dict[str, dict] = {}
+        for item in self.world_state.get("items", []):
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                item_map[str(item["id"])] = item
+        for item_id in npc.get("inventory", []):
+            item = item_map.get(str(item_id))
+            if item is None:
+                continue
+            total += float(item.get("weight", self._item_weight(str(item.get("item_type", "")))))
+        return total
+
+    def _item_weight(self, item_type: str) -> float:
+        return float(ITEM_WEIGHT_BY_TYPE.get(item_type, 1.0))
+
+    def _auto_equip_npc_from_tile_items(self, npc: dict, npc_changes: list[dict]) -> None:
+        nx = int(npc.get("x", 0))
+        ny = int(npc.get("y", 0))
+        equipment = npc.setdefault("equipment", {"hands": [None, None], "clothes": None, "backpack": None})
+        hands = equipment.setdefault("hands", [None, None])
+        if not isinstance(hands, list) or len(hands) != 2:
+            hands = [None, None]
+            equipment["hands"] = hands
+        inventory = npc.setdefault("inventory", [])
+        if not isinstance(inventory, list):
+            inventory = []
+            npc["inventory"] = inventory
+
+        for item in self.world_state.get("items", []):
+            if not isinstance(item, dict):
+                continue
+            if bool(item.get("consumed", False)):
+                continue
+            if item.get("holder_npc_id") is not None:
+                continue
+            loc = item.get("location", {})
+            if int(loc.get("x", -1)) != nx or int(loc.get("y", -1)) != ny:
+                continue
+            item_type = str(item.get("item_type", ""))
+            if item_type == ITEM_MINING_LASER:
+                for idx in range(2):
+                    if hands[idx] is None:
+                        hands[idx] = ITEM_MINING_LASER
+                        item["holder_npc_id"] = npc.get("id")
+                        item["equipped_by_npc_id"] = npc.get("id")
+                        item["equipped_slot"] = f"hand:{idx}"
+                        npc_changes.append({"type": "npc_item_equipped", "npc_id": npc.get("id"), "item_id": item.get("id"), "slot": f"hand:{idx}", "item_type": item_type})
+                        break
+            elif item_type == ITEM_SPACE_SUIT and equipment.get("clothes") is None:
+                equipment["clothes"] = ITEM_SPACE_SUIT
+                item["holder_npc_id"] = npc.get("id")
+                item["equipped_by_npc_id"] = npc.get("id")
+                item["equipped_slot"] = "clothes"
+                npc_changes.append({"type": "npc_item_equipped", "npc_id": npc.get("id"), "item_id": item.get("id"), "slot": "clothes", "item_type": item_type})
+            elif item_type == ITEM_BACKPACK and equipment.get("backpack") is None:
+                equipment["backpack"] = ITEM_BACKPACK
+                item["holder_npc_id"] = npc.get("id")
+                item["equipped_by_npc_id"] = npc.get("id")
+                item["equipped_slot"] = "backpack"
+                npc_changes.append({"type": "npc_item_equipped", "npc_id": npc.get("id"), "item_id": item.get("id"), "slot": "backpack", "item_type": item_type})
+            else:
+                slots = self._npc_backpack_slots(npc)
+                if slots <= 0 or len(inventory) >= slots:
+                    continue
+                capacity = self._npc_carry_capacity_weight(npc)
+                current_weight = self._npc_inventory_weight(npc)
+                item_weight = float(item.get("weight", self._item_weight(item_type)))
+                if current_weight + item_weight > capacity:
+                    continue
+                item_id = item.get("id")
+                if not isinstance(item_id, str):
+                    continue
+                inventory.append(item_id)
+                item["holder_npc_id"] = npc.get("id")
+                item["equipped_by_npc_id"] = npc.get("id")
+                item["equipped_slot"] = f"inventory:{len(inventory)-1}"
+                npc_changes.append({"type": "npc_item_stowed", "npc_id": npc.get("id"), "item_id": item_id, "slot": item["equipped_slot"]})
+
+    def _pressure_at_tile(self, x: int, y: int, index: dict, compartments: dict[int, dict]) -> float:
+        comp_id = index.get(self._xy_key(x, y))
+        if comp_id is None:
+            return 0.0
+        compartment = compartments.get(int(comp_id))
+        if compartment is None:
+            return 0.0
+        return float(compartment.get("pressure", 0.0))
+
     def _recompute_compartments(self) -> None:
         grid = self.world_state["grid"]
         self._sync_temperature_grid_with_tiles()
@@ -1034,6 +1181,7 @@ class SimulationEngine:
         self.world_state["compartments"] = compartments
         self.world_state["compartment_index"] = compartment_index
         self._refresh_thermal_state_summary()
+        self._ensure_npc_defaults()
 
     def _update_power(self) -> None:
         machines = self.world_state["machines"]
@@ -1304,6 +1452,7 @@ class SimulationEngine:
                     compartment["temperature"] = round(comp_totals[cid] / comp_counts[cid], 2)
 
         self._refresh_thermal_state_summary()
+        self._ensure_npc_defaults()
 
     def _initialize_npcs(self) -> None:
         names = [
@@ -1338,6 +1487,8 @@ class SimulationEngine:
                     "alive": True,
                     "personality": ["baseline", "diligent", "cautious"][i % 3],
                     "current_work_order_id": None,
+                    "equipment": {"hands": [None, None], "clothes": None, "backpack": None},
+                    "inventory": [],
                     "needs": {
                         "hunger": 0.0,
                         "fatigue": 0.0,
@@ -1360,6 +1511,10 @@ class SimulationEngine:
         for npc in self.world_state.get("npcs", []):
             if not npc.get("alive", True):
                 continue
+
+            self._ensure_npc_defaults()
+            self._auto_equip_npc_from_tile_items(npc, npc_changes)
+            has_spacesuit = self._npc_has_spacesuit(npc)
 
             before_temp = self._temperature_at_tile(int(npc["x"]), int(npc["y"]))
             was_in_thermal_hazard = bool(npc.get("in_thermal_hazard", False))
@@ -1390,11 +1545,11 @@ class SimulationEngine:
                 oxygen_here = self._oxygen_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
                 temp_here = self._temperature_at_tile(int(npc["x"]), int(npc["y"]))
                 # Survival constraints always dominate personality/task behavior.
-                if temp_here < SETTINGS.thermal_hazard_min_c or temp_here > SETTINGS.thermal_hazard_max_c:
+                if (not has_spacesuit) and (temp_here < SETTINGS.thermal_hazard_min_c or temp_here > SETTINGS.thermal_hazard_max_c):
                     next_pos = self._next_npc_position_for_thermal_safety(int(npc["x"]), int(npc["y"]), grid, width, height)
                     if next_pos is not None:
                         thermal_flee_step_taken = True
-                elif oxygen_here <= SETTINGS.oxygen_safe_min_percent:
+                elif (not has_spacesuit) and oxygen_here <= SETTINGS.oxygen_safe_min_percent:
                     next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
                 elif active_order is not None:
                     target = self._work_order_target(active_order, npc)
@@ -1426,11 +1581,15 @@ class SimulationEngine:
                 npc["x"], npc["y"] = next_pos
 
             oxygen = self._oxygen_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
+            pressure = self._pressure_at_tile(int(npc["x"]), int(npc["y"]), index, compartments)
             temperature = self._temperature_at_tile(int(npc["x"]), int(npc["y"]))
-            if oxygen <= 0.0:
+            if (not has_spacesuit) and oxygen <= 0.0:
                 npc["health"] = round(float(npc.get("health", 100.0)) - SETTINGS.suffocation_damage_per_tick_at_zero_o2, 2)
-            if temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c:
+            if (not has_spacesuit) and (temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c):
                 npc["health"] = round(float(npc.get("health", 100.0)) - SETTINGS.thermal_hazard_damage_per_tick, 2)
+            if (not has_spacesuit) and pressure < 0.2:
+                pressure_factor = max(0.0, min(1.0, (0.2 - pressure) / 0.2))
+                npc["health"] = round(float(npc.get("health", 100.0)) - (SETTINGS.npc_pressure_damage_per_tick_at_zero * pressure_factor), 2)
 
             needs = npc.setdefault("needs", {"hunger": 0.0, "fatigue": 0.0})
             # Deterministic baseline need drift.
@@ -1458,7 +1617,7 @@ class SimulationEngine:
                     }
                 )
 
-            if oxygen <= SETTINGS.oxygen_safe_min_percent:
+            if (not has_spacesuit) and oxygen <= SETTINGS.oxygen_safe_min_percent:
                 npc_changes.append(
                     {
                         "type": "npc_survival_state",
@@ -1467,7 +1626,7 @@ class SimulationEngine:
                         "health": round(float(npc.get("health", 100.0)), 2),
                     }
                 )
-            if temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c:
+            if (not has_spacesuit) and (temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c):
                 npc_changes.append(
                     {
                         "type": "npc_thermal_hazard",
@@ -1476,7 +1635,7 @@ class SimulationEngine:
                         "health": round(float(npc.get("health", 100.0)), 2),
                     }
                 )
-            in_thermal_hazard = temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c
+            in_thermal_hazard = (not has_spacesuit) and (temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c)
             if in_thermal_hazard and not was_in_thermal_hazard:
                 npc_changes.append({
                     "type": "npc_thermal_hazard_enter",
@@ -1614,6 +1773,15 @@ class SimulationEngine:
             progress_gain = 2
 
         work_type = str(active_order.get("work_type", ""))
+        if work_type == "MineIce" and not self._npc_has_equipped_item(npc, ITEM_MINING_LASER):
+            active_order["status"] = "Queued"
+            active_order["progress"] = 0
+            active_order.pop("assignee_npc_id", None)
+            active_order.pop("assigned_tick", None)
+            npc["current_work_order_id"] = None
+            work_order_changes.append({"type": "work_order_unassigned", "work_order_id": active_order["id"], "reason": "missing_mining_laser"})
+            return
+
         if work_type == "HaulItem":
             item = self._item_for_haul_order(active_order)
             if item is not None:
@@ -1664,6 +1832,7 @@ class SimulationEngine:
                 "location": {"x": int(npc["x"]), "y": int(npc["y"])},
                 "holder_npc_id": None,
                 "created_tick": self.tick,
+                "weight": self._item_weight(str(active_order.get("item_type", "IceChunk"))),
             }
             self.world_state.setdefault("items", []).append(item)
             npc_changes.append({"type": "item_created", "item_id": item_id, "item_type": item["item_type"], "location": item["location"]})
@@ -1735,6 +1904,7 @@ class SimulationEngine:
                     "holder_npc_id": None,
                     "created_tick": self.tick,
                     "consumed": False,
+                    "weight": self._item_weight("WaterUnit"),
                 }
                 self.world_state.setdefault("items", []).append(water_item)
                 npc_changes.append({"type": "item_created", "item_id": water_id, "item_type": "WaterUnit", "location": water_item["location"]})

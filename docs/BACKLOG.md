@@ -43,6 +43,15 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
   - Tests verify inaccessible storage is not selected/used.
 - **Status:** Completed by path-reachable storage selection in logistics destination routing.
 
+### [x] P1 — NPC equipment and wearable items
+- **Problem (historical):** NPCs lacked slot-based wearable/tool equipment and item weight handling.
+- **Goal:** Add hands/clothes/backpack equipment slots, weighted items, mining-laser prerequisite, and spacesuit hazard protections.
+- **Done when:**
+  - NPCs can equip MiningLaser/SpaceSuit/Backpack deterministically.
+  - MineIce enforces mining-laser prerequisite.
+  - SpaceSuit mitigates oxygen/pressure/thermal hazard damage.
+- **Status:** Completed in Phase 9 initial slice.
+
 ### [ ] P2 — Deterministic replay/stress harness expansion
 - **Problem:** Replay validation for larger command streams is limited.
 - **Goal:** Add stress fixtures for long command sequences and deterministic replay checks.
