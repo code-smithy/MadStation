@@ -16,6 +16,8 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'Click a tile to inspect.' in body
         assert 'Power Network' in body
         assert 'World Stats' in body
+        assert 'Severity' in body
+        assert 'Filter text' in body
 
         health_payload = await health()
         assert health_payload == {'status': 'ok'}

@@ -69,6 +69,11 @@
     input, select, button { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 6px; background: var(--btn); color: var(--text); border:1px solid var(--btn-border); }
     button { cursor: pointer; }
     #log { white-space: pre-wrap; font-size: 12px; max-height: 220px; overflow:auto; background:#0b1118; padding: 8px; border:1px solid var(--border); }
+    .log-controls { display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-bottom:8px; }
+    .log-line { margin: 0 0 4px 0; }
+    .sev-info { color: #93c5fd; }
+    .sev-warn { color: #fbbf24; }
+    .sev-error { color: #f87171; }
     .muted { color: var(--muted); font-size: 12px; }
     .tiny { font-size: 11px; }
     #inspector { white-space: pre-wrap; line-height: 1.35; }
@@ -149,6 +154,19 @@
 
       <div class="panel" style="margin-top:10px">
         <h3>Event Log</h3>
+        <div class="log-controls">
+          <label>Severity
+            <select id="logSeverity">
+              <option value="all">All</option>
+              <option value="info">Info</option>
+              <option value="warn">Warn</option>
+              <option value="error">Error</option>
+            </select>
+          </label>
+          <label>Filter text
+            <input id="logFilterText" type="text" placeholder="contains...">
+          </label>
+        </div>
         <div id="log"></div>
       </div>
     </aside>
@@ -163,6 +181,8 @@
     const viewModeEl = document.getElementById('viewMode');
     const inspectorEl = document.getElementById('inspector');
     const worldStatsEl = document.getElementById('worldStats');
+    const logSeverityEl = document.getElementById('logSeverity');
+    const logFilterTextEl = document.getElementById('logFilterText');
 
     const randId = () => Math.random().toString(36).slice(2, 10);
     const val = (id) => document.getElementById(id).value;
@@ -171,6 +191,7 @@
     let wsAttempt = 0;
     let apiBaseHint = null;
     let latestWorld = null;
+    const logEntries = [];
 
     function wsCandidates() {
       const params = new URLSearchParams(location.search);
@@ -229,10 +250,35 @@
       throw lastError || new Error(`Unable to fetch ${path}`);
     }
 
+    function inferSeverity(obj) {
+      const text = (typeof obj === 'string' ? obj : JSON.stringify(obj)).toLowerCase();
+      if (text.includes('error') || text.includes('invalid') || text.includes('disconnected')) return 'error';
+      if (text.includes('rejected') || text.includes('unpowered') || text.includes('warning')) return 'warn';
+      return 'info';
+    }
+
+    function renderLog() {
+      const severity = logSeverityEl.value;
+      const textFilter = (logFilterTextEl.value || '').trim().toLowerCase();
+      const filtered = logEntries.filter((entry) => {
+        if (severity !== 'all' && entry.severity !== severity) return false;
+        if (textFilter && !entry.line.toLowerCase().includes(textFilter)) return false;
+        return true;
+      });
+      logEl.innerHTML = filtered.map((entry) =>
+        `<div class="log-line sev-${entry.severity}">${entry.ts} [${entry.severity}] ${entry.line}</div>`
+      ).join('');
+    }
+
     function appendLog(obj) {
       const line = typeof obj === 'string' ? obj : JSON.stringify(obj);
-      logEl.textContent = `${new Date().toLocaleTimeString()} ${line}\n` + logEl.textContent;
-      logEl.textContent = logEl.textContent.slice(0, 9000);
+      logEntries.unshift({
+        ts: new Date().toLocaleTimeString(),
+        severity: inferSeverity(obj),
+        line,
+      });
+      if (logEntries.length > 200) logEntries.length = 200;
+      renderLog();
     }
 
     function tileClass(tile) {
@@ -463,6 +509,8 @@
     });
 
     viewModeEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+    logSeverityEl.onchange = renderLog;
+    logFilterTextEl.oninput = renderLog;
 
     connectWs();
     refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));

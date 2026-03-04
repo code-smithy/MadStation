@@ -18,6 +18,7 @@ Phase 7 focuses on a minimal operator-facing frontend first, then richer UX poli
 - Added Power Network view mode and compact world stats panel (power gen/demand/networks). ✅
 - Added compartment and oxygen visualization modes in the main grid. ✅
 - Add frontend-side deterministic event feed filtering and severity tags.
+- Added event log severity tags plus severity/text filters in the UI. ✅
 
 ## Exit target for Phase 7
 

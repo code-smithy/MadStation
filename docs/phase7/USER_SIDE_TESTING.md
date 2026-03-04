@@ -57,3 +57,11 @@ Use this checklist to validate the frontend MVP.
 1. Confirm tile colors are distinct for Vacuum/Floor/Wall/Door/Airlock/Window.
 2. Confirm NPCs appear as red markers over tiles.
 3. Hover tiles and verify coordinate/type tooltip appears.
+
+
+## 7) Event log filtering
+
+1. Generate mixed log entries (connect/disconnect, command send, errors).
+2. Set **Severity** to `error` and verify only error-tagged lines remain visible.
+3. Use **Filter text** to narrow entries by substring (for example `ws_connected` or `invalid`).
+4. Return severity to `All` and clear filter text to restore full feed.
