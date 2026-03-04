@@ -25,12 +25,12 @@ Execution tasklist for delivering temperature gameplay in staged PRs.
 - [x] Add thermal delta payloads/events to websocket updates.
 
 ### Tests (PR-1 gate)
-- [ ] Determinism test for identical tile temperature field across replay. (remaining)
+- [x] Determinism test for identical tile temperature field across replay.
 - [x] Vacuum cooling trend test.
-- [ ] Tile transfer convergence test. (remaining)
+- [x] Tile transfer convergence test.
 - [x] Heater power-gating test (powered vs unpowered).
 - [x] Cooler power-gating test (powered vs unpowered).
-- [ ] Machine waste-heat behavior test. (remaining)
+- [x] Machine waste-heat behavior test.
 - [x] `/status` thermal fields test.
 - [x] `/world` thermal field test.
 
@@ -45,7 +45,7 @@ Execution tasklist for delivering temperature gameplay in staged PRs.
 
 ### Events/observability
 - [x] Emit thermal hazard enter/exit events.
-- [~] Emit flee-related NPC decision events (or equivalent debug markers).
+- [x] Emit flee-related NPC decision events (or equivalent debug markers).
 
 ### Tests (PR-2 gate)
 - [x] NPC flees hazardous thermal area when escape path exists.

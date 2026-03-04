@@ -1289,6 +1289,10 @@ class SimulationEngine:
             if not npc.get("alive", True):
                 continue
 
+            before_temp = self._temperature_at_tile(int(npc["x"]), int(npc["y"]))
+            was_in_thermal_hazard = bool(npc.get("in_thermal_hazard", False))
+            thermal_flee_step_taken = False
+
             active_order = self._npc_active_work_order(npc)
             if active_order is None:
                 assigned = self._assign_next_work_order(npc)
@@ -1316,6 +1320,8 @@ class SimulationEngine:
                 # Survival constraints always dominate personality/task behavior.
                 if temp_here < SETTINGS.thermal_hazard_min_c or temp_here > SETTINGS.thermal_hazard_max_c:
                     next_pos = self._next_npc_position_for_thermal_safety(int(npc["x"]), int(npc["y"]), grid, width, height)
+                    if next_pos is not None:
+                        thermal_flee_step_taken = True
                 elif oxygen_here <= SETTINGS.oxygen_safe_min_percent:
                     next_pos = self._next_npc_position(int(npc["x"]), int(npc["y"]), grid, width, height, index, compartments)
                 elif active_order is not None:
@@ -1398,6 +1404,27 @@ class SimulationEngine:
                         "health": round(float(npc.get("health", 100.0)), 2),
                     }
                 )
+            in_thermal_hazard = temperature < SETTINGS.thermal_hazard_min_c or temperature > SETTINGS.thermal_hazard_max_c
+            if in_thermal_hazard and not was_in_thermal_hazard:
+                npc_changes.append({
+                    "type": "npc_thermal_hazard_enter",
+                    "npc_id": npc["id"],
+                    "temperature_c": round(temperature, 2),
+                })
+            if not in_thermal_hazard and was_in_thermal_hazard:
+                npc_changes.append({
+                    "type": "npc_thermal_hazard_exit",
+                    "npc_id": npc["id"],
+                    "temperature_c": round(temperature, 2),
+                })
+            if thermal_flee_step_taken:
+                npc_changes.append({
+                    "type": "npc_thermal_flee",
+                    "npc_id": npc["id"],
+                    "temperature_before_c": round(before_temp, 2),
+                    "temperature_after_c": round(temperature, 2),
+                })
+            npc["in_thermal_hazard"] = in_thermal_hazard
 
             if float(npc.get("health", 0.0)) <= 0.0:
                 npc["alive"] = False

@@ -23,13 +23,10 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'World Stats' in body
         assert 'thermal_avg=' in body
         assert 'temperature=' in body
-        assert 'Temperature Heat' in body
-        assert 'World Stats' in body
         assert 'Severity' in body
         assert 'Filter text' in body
         assert 'Machine Quick Actions' in body
         assert 'Place Machine at X/Y' in body
-        assert 'Cooler' in body
         assert 'Cooler' in body
         assert 'Item ID (for Haul/Refine/Feed)' in body
         assert 'Destination X/Y (Haul)' in body

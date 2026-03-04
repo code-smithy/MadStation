@@ -2403,6 +2403,56 @@ def test_phase8b_npc_flees_thermal_hazard_when_path_exists() -> None:
     npc = engine.world_state["npcs"][0]
     assert (npc["x"], npc["y"]) == (11, 10)
     assert any(change.get("type") == "npc_move" for change in npc_changes)
+    assert any(change.get("type") == "npc_thermal_flee" for change in npc_changes)
+
+
+def test_phase8a_temperature_grid_is_deterministic_for_same_inputs() -> None:
+    engine_a = SimulationEngine(load_snapshot=False)
+    engine_b = SimulationEngine(load_snapshot=False)
+
+    for _ in range(5):
+        engine_a._update_temperature()
+        engine_b._update_temperature()
+
+    assert engine_a.world_state["temperature_grid"] == engine_b.world_state["temperature_grid"]
+
+
+def test_phase8a_temperature_transfer_converges_neighbors() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][10][10] = "Floor"
+    engine.world_state["grid"][10][11] = "Floor"
+
+    engine._sync_temperature_grid_with_tiles()
+    engine.world_state["temperature_grid"][10][10] = 50.0
+    engine.world_state["temperature_grid"][10][11] = 10.0
+
+    before_gap = abs(engine.world_state["temperature_grid"][10][10] - engine.world_state["temperature_grid"][10][11])
+    for _ in range(5):
+        engine._update_temperature()
+    after_gap = abs(engine.world_state["temperature_grid"][10][10] - engine.world_state["temperature_grid"][10][11])
+
+    assert after_gap < before_gap
+
+
+def test_phase8a_reactor_waste_heat_increases_local_temperature() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][12][12] = "Floor"
+    engine._sync_temperature_grid_with_tiles()
+    engine.world_state["temperature_grid"][12][12] = 20.0
+    engine.world_state["machines"]["12,12"] = {
+        "type": "Reactor",
+        "enabled": True,
+        "generation_kw": 12.0,
+    }
+
+    engine._update_temperature()
+    assert engine.world_state["temperature_grid"][12][12] > 20.0
 
 
 def test_phase8b_trapped_npc_takes_thermal_damage_and_death_cause_is_thermal() -> None:
