@@ -2866,3 +2866,25 @@ def test_phase9_spacesuit_protects_against_hazard_damage() -> None:
 
     assert no_suit_health < 100.0
     assert suit_health == 100.0
+
+
+def test_default_engine_init_does_not_restore_snapshot_implicitly(tmp_path, monkeypatch) -> None:
+    snapshot_file = tmp_path / ".madstation_snapshot.json"
+    snapshot_file.write_text('{"snapshot_schema_version": 1, "state": {"tick": 999, "server_sequence_id": 999, "world_state": {}}, "state_hash": "invalid"}')
+    monkeypatch.chdir(tmp_path)
+
+    engine = SimulationEngine()
+    assert engine.tick == 0
+    assert engine.server_sequence_id == 0
+
+
+def test_engine_can_still_restore_when_explicitly_enabled(tmp_path) -> None:
+    snapshot_file = tmp_path / "snap.json"
+    first = SimulationEngine(snapshot_path=str(snapshot_file), snapshot_cadence_ticks=1, load_snapshot=False)
+    first.tick = 7
+    first.server_sequence_id = 11
+    first._persist_snapshot()
+
+    restored = SimulationEngine(snapshot_path=str(snapshot_file), load_snapshot=True)
+    assert restored.tick == 7
+    assert restored.server_sequence_id == 11

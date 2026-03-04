@@ -73,7 +73,7 @@ class SimulationEngine:
         snapshot_cadence_ticks: int | None = None,
         replay_log_path: str | None = None,
         replay_max_entries: int | None = None,
-        load_snapshot: bool = True,
+        load_snapshot: bool = False,
     ) -> None:
         width, height = 50, 50
         self.tick: int = 0

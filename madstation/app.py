@@ -7,7 +7,9 @@ from fastapi.responses import HTMLResponse
 from madstation.engine import SimulationEngine
 from madstation.protocol import ClientCommand, CommandAck, CommandResult
 
-engine = SimulationEngine()
+engine = SimulationEngine(load_snapshot=True)
+
+FRONTEND_INDEX_PATH = Path(__file__).resolve().parent / "frontend" / "index.html"
 
 FRONTEND_INDEX_PATH = Path(__file__).resolve().parent / "frontend" / "index.html"
 
