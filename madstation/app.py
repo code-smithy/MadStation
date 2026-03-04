@@ -11,6 +11,8 @@ engine = SimulationEngine(load_snapshot=True)
 
 FRONTEND_INDEX_PATH = Path(__file__).resolve().parent / "frontend" / "index.html"
 
+FRONTEND_INDEX_PATH = Path(__file__).resolve().parent / "frontend" / "index.html"
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
