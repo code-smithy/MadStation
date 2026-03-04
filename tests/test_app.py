@@ -23,6 +23,10 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'Item ID (for Haul/Refine/Feed)' in body
         assert 'Destination X/Y (Haul)' in body
         assert 'Generator X/Y (Feed)' in body
+        assert 'Highlight NPCs' in body
+        assert 'Highlight Work Orders' in body
+        assert 'WO Queued' in body
+        assert 'WO Active' in body
 
         health_payload = await health()
         assert health_payload == {'status': 'ok'}

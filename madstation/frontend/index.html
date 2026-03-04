@@ -22,6 +22,8 @@
       --npc: #ff5d73;
       --power-on: #f59e0b;
       --power-off: #334155;
+      --wo-queued: #fde047;
+      --wo-active: #fb7185;
     }
     body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
     header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
@@ -57,6 +59,23 @@
       border-radius: 999px;
       background: var(--npc);
       box-shadow: 0 0 4px rgba(255, 93, 115, 0.6);
+      z-index: 2;
+    }
+    .cell.wo-queued::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 1px solid var(--wo-queued);
+      box-sizing: border-box;
+      z-index: 1;
+    }
+    .cell.wo-active::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 1px solid var(--wo-active);
+      box-sizing: border-box;
+      z-index: 1;
     }
 
     .legend { display:flex; gap:8px; flex-wrap:wrap; margin-top: 8px; font-size: 12px; }
@@ -102,6 +121,8 @@
         <span class="legend-item"><span class="swatch" style="background:var(--npc)"></span>NPC</span>
         <span class="legend-item"><span class="swatch" style="background:var(--power-on)"></span>Power On</span>
         <span class="legend-item"><span class="swatch" style="background:var(--power-off)"></span>Power Off</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--wo-queued)"></span>WO Queued</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--wo-active)"></span>WO Active</span>
       </div>
     </section>
 
@@ -121,6 +142,8 @@
             <option value="power">Power Network</option>
           </select>
         </label>
+        <label style="margin-top:8px"><input id="highlightNpc" type="checkbox" checked> Highlight NPCs</label>
+        <label><input id="highlightWorkOrders" type="checkbox" checked> Highlight Work Orders</label>
         <div id="inspector" class="muted tiny" style="margin-top:8px">Click a tile to inspect.</div>
       </div>
 
@@ -218,6 +241,8 @@
     const worldStatsEl = document.getElementById('worldStats');
     const logSeverityEl = document.getElementById('logSeverity');
     const logFilterTextEl = document.getElementById('logFilterText');
+    const highlightNpcEl = document.getElementById('highlightNpc');
+    const highlightWorkOrdersEl = document.getElementById('highlightWorkOrders');
 
     const randId = () => Math.random().toString(36).slice(2, 10);
     const val = (id) => document.getElementById(id).value;
@@ -395,6 +420,7 @@
       const compartment = compartmentMap.get(String(compId)) || null;
       const npcs = normalizeNpcList(latestWorld.npcs).filter((n) => n && n.x === x && n.y === y && n.alive !== false);
       const machines = (latestWorld.machines || []).filter((m) => m && m.location && m.location.x === x && m.location.y === y);
+      const workOrders = normalizeWorkOrders(latestWorld.work_orders).filter((wo) => wo && wo.location && wo.location.x === x && wo.location.y === y);
       const lines = [
         `tile: ${tile ?? 'unknown'} @ (${x},${y})`,
         `compartment: ${compId ?? 'none'}`
@@ -402,6 +428,7 @@
       if (compartment) lines.push(`oxygen=${compartment.oxygen_percent}% pressure=${compartment.pressure}`);
       if (npcs.length) lines.push(`npcs: ${npcs.map((n) => n.name || n.id).join(', ')}`);
       if (machines.length) lines.push(`machines: ${machines.map((m) => m.type || m.id).join(', ')}`);
+      if (workOrders.length) lines.push(`work_orders: ${workOrders.map((w) => `${w.work_type || 'Work'}:${w.status || 'Unknown'}`).join(', ')}`);
       const powerMap = compartmentPowerMap(latestWorld);
       if (compId != null && powerMap.has(String(compId))) lines.push(`power_network: ${powerMap.get(String(compId)) ? 'powered' : 'unpowered'}`);
       inspectorEl.textContent = lines.join('\n');
@@ -410,6 +437,12 @@
     function normalizeNpcList(rawNpcs) {
       if (Array.isArray(rawNpcs)) return rawNpcs;
       if (rawNpcs && typeof rawNpcs === 'object') return Object.values(rawNpcs);
+      return [];
+    }
+
+    function normalizeWorkOrders(rawOrders) {
+      if (Array.isArray(rawOrders)) return rawOrders;
+      if (rawOrders && typeof rawOrders === 'object') return Object.values(rawOrders);
       return [];
     }
 
@@ -438,6 +471,17 @@
       const npcByPos = new Set(normalizeNpcList(world.npcs)
         .filter((n) => n && n.alive !== false)
         .map((n) => `${n.x},${n.y}`));
+      const workOrders = normalizeWorkOrders(world.work_orders);
+      const workOrdersByPos = new Map();
+      for (const wo of workOrders) {
+        if (!wo || !wo.location) continue;
+        const key = `${wo.location.x},${wo.location.y}`;
+        const current = workOrdersByPos.get(key) || { queued: 0, active: 0 };
+        const status = String(wo.status || '');
+        if (status === 'Queued') current.queued += 1;
+        if (status === 'Assigned' || status === 'InProgress') current.active += 1;
+        workOrdersByPos.set(key, current);
+      }
       const compMap = mapById(world.compartments || []);
       const powerMap = compartmentPowerMap(world);
 
@@ -452,8 +496,15 @@
           if (viewModeEl.value === 'compartment') cls = compartmentClass(compId);
           if (viewModeEl.value === 'oxygen') cls = oxygenClass(oxygenPct);
           if (viewModeEl.value === 'power') cls = powerClass(powerMap.get(String(compId)));
-          const npc = npcByPos.has(`${x},${y}`) ? ' npc' : '';
-          cells.push(`<div class="cell clickable ${cls}${npc}" data-x="${x}" data-y="${y}" title="${x},${y} ${tile}"></div>`);
+          const posKey = `${x},${y}`;
+          const npc = highlightNpcEl.checked && npcByPos.has(posKey) ? ' npc' : '';
+          let woClass = '';
+          if (highlightWorkOrdersEl.checked) {
+            const woCounts = workOrdersByPos.get(posKey);
+            if (woCounts && woCounts.active > 0) woClass = ' wo-active';
+            else if (woCounts && woCounts.queued > 0) woClass = ' wo-queued';
+          }
+          cells.push(`<div class="cell clickable ${cls}${npc}${woClass}" data-x="${x}" data-y="${y}" title="${x},${y} ${tile}"></div>`);
         }
       }
       refreshWorldStats(world);
@@ -596,6 +647,8 @@
     });
 
     viewModeEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+    highlightNpcEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
+    highlightWorkOrdersEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
     logSeverityEl.onchange = renderLog;
     logFilterTextEl.oninput = renderLog;
 

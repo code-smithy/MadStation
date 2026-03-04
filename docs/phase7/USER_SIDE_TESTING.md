@@ -81,3 +81,11 @@ Use this checklist to validate the frontend MVP.
 2. Select `RefineIce`, set `Item ID`, submit, and verify queued/apply acknowledgment.
 3. Select `FeedOxygenGenerator`, set `Item ID` and `Generator X/Y`, then submit and confirm ack.
 4. Select `MineIce` and ensure `Mine Item Type` defaults to `IceChunk`.
+
+
+## 10) NPC/work-order highlights
+
+1. Ensure **Highlight NPCs** and **Highlight Work Orders** are enabled in View/Inspect panel.
+2. Confirm NPC tiles show red dots and work-order target tiles show queued/active border highlights.
+3. Toggle each highlight off and verify the corresponding overlay disappears while base tile view remains.
+4. Click a highlighted work-order tile and confirm inspector includes `work_orders:` with status labels.
