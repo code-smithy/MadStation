@@ -1,5 +1,9 @@
 import asyncio
+from dataclasses import replace
 import json
+
+import madstation.engine as engine_module
+from madstation.config import SETTINGS as BASE_SETTINGS
 
 from madstation.engine import SimulationEngine, TILE_VACUUM, TILE_WALL
 from madstation.protocol import ClientCommand, CommandResult, CommandType
@@ -2096,3 +2100,98 @@ def test_phase6f_idle_ratio_history_is_bounded(tmp_path) -> None:
         assert len(status["queue_depth_history"]) <= 120
 
     asyncio.run(run())
+
+
+def test_work_order_created_event_snapshots_creation_state() -> None:
+    engine = SimulationEngine()
+    engine.tick = 99
+
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-dead",
+            "name": "Dead",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 0.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        },
+        {
+            "id": "npc-worker",
+            "name": "Worker",
+            "x": 21,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        },
+    ]
+    engine.world_state["work_orders"] = []
+
+    _, work_changes, _ = engine._update_npcs()
+
+    created_event = next(c for c in work_changes if c.get("type") == "work_order_created")
+    created_order_id = created_event["work_order"]["id"]
+    created_live = next(o for o in engine.world_state["work_orders"] if o["id"] == created_order_id)
+
+    assert created_event["work_order"]["status"] == "Queued"
+    assert created_live["status"] == "Assigned"
+
+
+def test_npc_move_budget_scales_with_tick_rate(monkeypatch) -> None:
+    monkeypatch.setattr(engine_module, "SETTINGS", replace(BASE_SETTINGS, tick_rate_hz=4))
+    engine = engine_module.SimulationEngine()
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(5, 9):
+        engine.world_state["grid"][5][x] = "Floor"
+    engine._recompute_compartments()
+
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-rate",
+            "name": "Rate",
+            "x": 5,
+            "y": 5,
+            "speed": 2,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-rate",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-rate",
+            "work_type": "DisposeBody",
+            "status": "Assigned",
+            "location": {"x": 8, "y": 5},
+            "body_id": "body-rate",
+            "assignee_npc_id": "npc-rate",
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 2,
+        }
+    ]
+
+    engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (5, 5)
+    assert npc["move_accumulator"] == 0.5
+
+    engine._update_npcs()
+    npc = engine.world_state["npcs"][0]
+    assert (npc["x"], npc["y"]) == (6, 5)
+    assert npc["move_accumulator"] == 0.0

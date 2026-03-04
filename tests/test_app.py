@@ -1,6 +1,8 @@
 import asyncio
 
-from madstation.app import frontend_index, health, status, websocket_usage, world
+import pytest
+
+from madstation.app import app, frontend_index, health, status, websocket_usage, world
 
 
 def test_health_status_world_and_ws_usage_handlers() -> None:
@@ -46,3 +48,29 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'example' in ws_usage
 
     asyncio.run(run())
+
+
+def test_ws_snapshot_and_invalid_payload_ack() -> None:
+    pytest.importorskip('httpx')
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws:
+            first = ws.receive_json()
+            assert first.get('type') == 'snapshot_full'
+
+            ws.send_json({
+                'client_command_id': 'invalid-build-1',
+                'type': 'Build',
+                'payload': {'x': 'bad', 'y': 1},
+            })
+
+            ack = None
+            for _ in range(6):
+                message = ws.receive_json()
+                if message.get('client_command_id') == 'invalid-build-1':
+                    ack = message
+                    break
+
+            assert ack is not None
+            assert ack['result'] == 'INVALID_PAYLOAD'

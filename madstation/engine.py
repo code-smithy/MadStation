@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from collections import deque
 import hashlib
 import json
@@ -278,7 +279,7 @@ class SimulationEngine:
                 topology_changed = topology_changed or did_change
             elif pending.command.type is CommandType.CREATE_WORK_ORDER:
                 created_order = self._apply_create_work_order(pending.command, self.server_sequence_id)
-                command_work_order_changes.append({"type": "work_order_created_by_command", "work_order": created_order})
+                command_work_order_changes.append({"type": "work_order_created_by_command", "work_order": self._snapshot_work_order(created_order)})
 
             applied_commands_for_replay.append(
                 {
@@ -646,6 +647,10 @@ class SimulationEngine:
         }
         encoded = json.dumps(value, sort_keys=True).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _snapshot_work_order(order: dict) -> dict:
+        return deepcopy(order)
 
     def _apply_structural_command(self, command: ClientCommand) -> tuple[dict | None, bool]:
         x = command.payload["x"]
@@ -1111,7 +1116,8 @@ class SimulationEngine:
                     )
 
             before_x, before_y = int(npc["x"]), int(npc["y"])
-            move_budget = float(npc.get("move_accumulator", 0.0)) + float(npc.get("speed", SETTINGS.npc_speed_default_tiles_per_sec))
+            per_tick_speed = float(npc.get("speed", SETTINGS.npc_speed_default_tiles_per_sec)) / max(float(SETTINGS.tick_rate_hz), 1.0)
+            move_budget = float(npc.get("move_accumulator", 0.0)) + per_tick_speed
             steps = int(move_budget)
             npc["move_accumulator"] = round(move_budget - steps, 3)
 
@@ -1247,7 +1253,7 @@ class SimulationEngine:
                     "required_progress": 2,
                 }
                 self.world_state.setdefault("work_orders", []).append(work_order)
-                work_order_changes.append({"type": "work_order_created", "work_order": work_order})
+                work_order_changes.append({"type": "work_order_created", "work_order": self._snapshot_work_order(work_order)})
                 continue
 
             if active_order is not None:
@@ -1375,7 +1381,7 @@ class SimulationEngine:
                     "required_progress": 2,
                 }
                 self.world_state.setdefault("work_orders", []).append(haul_order)
-                work_order_changes.append({"type": "work_order_created_auto", "work_order": haul_order})
+                work_order_changes.append({"type": "work_order_created_auto", "work_order": self._snapshot_work_order(haul_order)})
         elif work_type == "HaulItem":
             item = self._item_for_haul_order(active_order)
             destination = active_order.get("destination")
@@ -1398,7 +1404,7 @@ class SimulationEngine:
                         "required_progress": 2,
                     }
                     self.world_state.setdefault("work_orders", []).append(refine_order)
-                    work_order_changes.append({"type": "work_order_created_auto", "work_order": refine_order})
+                    work_order_changes.append({"type": "work_order_created_auto", "work_order": self._snapshot_work_order(refine_order)})
                 elif str(item.get("item_type")) == "WaterUnit":
                     generator_location = self._nearest_oxygen_generator_location(int(item["location"]["x"]), int(item["location"]["y"]))
                     if generator_location is not None:
@@ -1414,7 +1420,7 @@ class SimulationEngine:
                             "required_progress": 1,
                         }
                         self.world_state.setdefault("work_orders", []).append(feed_order)
-                        work_order_changes.append({"type": "work_order_created_auto", "work_order": feed_order})
+                        work_order_changes.append({"type": "work_order_created_auto", "work_order": self._snapshot_work_order(feed_order)})
         elif work_type == "RefineIce":
             source_item = self._item_for_order_item(active_order)
             if source_item is not None and not source_item.get("consumed", False):
@@ -1446,7 +1452,7 @@ class SimulationEngine:
                         "required_progress": 2,
                     }
                     self.world_state.setdefault("work_orders", []).append(haul_order)
-                    work_order_changes.append({"type": "work_order_created_auto", "work_order": haul_order})
+                    work_order_changes.append({"type": "work_order_created_auto", "work_order": self._snapshot_work_order(haul_order)})
         elif work_type == "FeedOxygenGenerator":
             water_item = self._item_for_order_item(active_order)
             gx = int(npc["x"])
