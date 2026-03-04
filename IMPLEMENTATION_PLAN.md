@@ -189,6 +189,7 @@
 8. Add operator presets/scenarios for failure-cascade demos.
 9. Add performance profiling pass for >5 concurrent clients.
 10. Add explicit release checklist tying docs, tests, and runtime observability.
+11. Add deterministic temperature simulation (vacuum cooling, machine heat, heaters/coolers).
 
 Detailed backlog tracking lives in `docs/BACKLOG.md`.
 

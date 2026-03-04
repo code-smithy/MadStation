@@ -9,6 +9,14 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
 
 ## Prioritized Items
 
+### P1 — Temperature gameplay (heaters/coolers + machine heat)
+- **Problem:** Simulation currently has oxygen/power but no thermal gameplay loop.
+- **Goal:** Add deterministic compartment temperature simulation with vacuum cooling, machine waste heat, and powered HVAC control.
+- **Done when:**
+  - Temperature fields and thermal updates are deterministic and observable.
+  - Heaters/coolers and machine heat affect compartments with power gating.
+  - Tests and user-side thermal checklist are documented in `docs/phase8/TEMPERATURE_GAMEPLAY_PLAN.md`.
+
 ### P1 — Door power-loss behavior model
 - **Problem:** Door behavior under power loss is still deferred.
 - **Goal:** Define deterministic door state transitions when local power is lost/recovered.
