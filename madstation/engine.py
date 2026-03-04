@@ -1638,6 +1638,15 @@ class SimulationEngine:
     def _order_priority_key(order: dict) -> tuple[int, str]:
         return int(order.get("created_tick", 0)), str(order.get("id", ""))
 
+    def _is_alive_npc_id(self, npc_id: object) -> bool:
+        if not isinstance(npc_id, str):
+            return False
+        for npc in self.world_state.get("npcs", []):
+            if npc.get("id") != npc_id:
+                continue
+            return bool(npc.get("alive", True))
+        return False
+
     def _active_order_item_conflict_reason(self, order: dict, npc: dict) -> str | None:
         if str(order.get("work_type")) not in WORK_TYPES_WITH_ITEM:
             return None
@@ -1662,7 +1671,10 @@ class SimulationEngine:
         holder = item.get("holder_npc_id")
         npc_id = npc.get("id")
         if holder is not None and holder != npc_id:
-            return "claimed_by_other_order"
+            # Dead/missing holders should not permanently lock the item.
+            if self._is_alive_npc_id(holder):
+                return "claimed_by_other_order"
+            item["holder_npc_id"] = None
         return None
 
     def _path_distance(

@@ -2215,3 +2215,76 @@ def test_power_non_compartment_fallback_network_is_shared() -> None:
     assert len(networks) == 1
     assert networks[0]["network_id"] == "non_compartment"
     assert "2,1" in networks[0]["powered_consumers"]
+
+
+def test_dead_item_holder_does_not_block_haul_order_conflict_resolution() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(5, 8):
+        engine.world_state["grid"][5][x] = "Floor"
+    engine._recompute_compartments()
+
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-carrier-dead",
+            "name": "DeadCarrier",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 0.0,
+            "alive": False,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        },
+        {
+            "id": "npc-hauler",
+            "name": "Hauler",
+            "x": 5,
+            "y": 5,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-haul-dead-holder",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        },
+    ]
+
+    engine.world_state["items"] = [
+        {
+            "id": "item-dead-holder",
+            "item_type": "IceChunk",
+            "location": {"x": 5, "y": 5},
+            "holder_npc_id": "npc-carrier-dead",
+            "created_tick": 1,
+            "consumed": False,
+        }
+    ]
+
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-haul-dead-holder",
+            "work_type": "HaulItem",
+            "status": "Assigned",
+            "location": {"x": 5, "y": 5},
+            "destination": {"x": 7, "y": 5},
+            "item_id": "item-dead-holder",
+            "assignee_npc_id": "npc-hauler",
+            "created_tick": 1,
+            "progress": 0,
+            "required_progress": 2,
+        }
+    ]
+
+    _, work_changes, _ = engine._update_npcs()
+
+    assert not any(
+        c.get("type") == "work_order_unassigned" and c.get("reason") == "claimed_by_other_order"
+        for c in work_changes
+    )
+    assert engine.world_state["items"][0].get("holder_npc_id") in {None, "npc-hauler"}
