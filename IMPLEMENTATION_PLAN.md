@@ -161,34 +161,34 @@
 
 **Exit criteria:** restart resumes world safely within snapshot tolerance. ✅ Met.
 
-## Phase 7 — Frontend MVP (parallel, correctness-first) 🚧 In Progress
+## Phase 7 — Frontend MVP (parallel, correctness-first) ✅ Completed
 
 ### Phase 7A (implemented in this iteration)
 - Added simulation-first web UI entry page (`GET /`). ✅
 - Added grid view, edit controls, and basic work-order controls. ✅
 - Added live status panel + event log with websocket-driven updates. ✅
 
-### Phase 7B (planned)
-- Add tile/NPC inspectors and machine quick-actions.
-- Add power/oxygen/compartment overlays and event filtering ergonomics.
-- Improve work-order forms for richer metadata entry.
+### Phase 7B (completed)
+- Added tile/NPC inspectors and machine quick-actions. ✅
+- Added power/oxygen/compartment overlays plus event filtering ergonomics. ✅
+- Added richer work-order metadata forms. ✅
 
-**Exit criteria:** operators can reliably induce and observe failure cascades.
+**Exit criteria:** operators can reliably induce and observe failure cascades. ✅ Met.
 
 ---
 
-## Immediate Backlog (Next 10 tickets)
+## Immediate Backlog (Post-Phase-7 follow-ons)
 
-1. Define deterministic tick pipeline + subsystem order.
-2. Define command schema + validation + sequence IDs.
-3. Implement anonymous session issuance and throttling middleware.
-4. Implement first-write-wins conflict resolver.
-5. Build world state model + hash function for determinism checks.
-6. Implement 1Hz loop + websocket snapshot/delta protocol.
-7. Implement structural edit commands and topology invalidation hooks.
-8. Implement compartment flood-fill recalculation.
-9. Implement oxygen diffusion/leak model (compartment-level).
-10. Add deterministic simulation replay test fixture.
+1. Door power-loss behavior model (deferred from early phases).
+2. Enforce placement constraints currently documented as future-ready.
+3. Add topology-aware (non-global) storage access constraints.
+4. Expand deterministic replay/stress harness for larger command streams.
+5. Add Phase 7 UI regression tests for overlay/filter/inspector interactions.
+6. Add optional per-tile environment resolution path (post compartment-level baseline).
+7. Add frontend UX polish pass for accessibility and compact layouts.
+8. Add operator presets/scenarios for failure-cascade demos.
+9. Add performance profiling pass for >5 concurrent clients.
+10. Add explicit release checklist tying docs, tests, and runtime observability.
 
 ---
 

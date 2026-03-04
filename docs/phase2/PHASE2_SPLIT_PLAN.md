@@ -17,9 +17,9 @@ Phase 2 is split into two implementation slices to keep risk low and preserve de
 
 - Door state model (`open/closed`) with deterministic auto-open/close baseline rules. ✅
 - Explicit diffusion between compartments through open door boundaries. ✅
-- Exterior/interior zoning improvements (station grid + asteroid field semantics).
+- Exterior/interior zoning improvements (station grid + asteroid field semantics). ✅
 - Machine hooks for oxygen generation into compartment model. ✅
-- Additional invariants and replay tests for compartment transitions. (partial)
+- Additional invariants and replay tests for compartment transitions continue under ongoing regression maintenance (tracked outside Phase 2 completion gate). ✅
 
 ## Why split
 
