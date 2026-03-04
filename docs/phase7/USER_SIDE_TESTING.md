@@ -40,9 +40,10 @@ Use this checklist to validate the frontend MVP.
 
 ## 6) View mode + tile inspector
 
-1. Switch **View Mode** between Tile Type, Compartment ID, and Oxygen Heat.
+1. Switch **View Mode** between Tile Type, Compartment ID, Oxygen Heat, and Power Network.
 2. Confirm the map recolors immediately for each mode.
-3. Click a few cells and verify inspector details include tile + coordinates and, when applicable, compartment oxygen/pressure.
+3. Click a few cells and verify inspector details include tile + coordinates and, when applicable, compartment oxygen/pressure and power state.
+4. Confirm **World Stats** updates with power generation/demand/network counts.
 
 ## Troubleshooting
 

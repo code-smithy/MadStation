@@ -20,6 +20,8 @@
       --airlock: #22c55e;
       --window: #a78bfa;
       --npc: #ff5d73;
+      --power-on: #f59e0b;
+      --power-off: #334155;
     }
     body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
     header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
@@ -70,6 +72,7 @@
     .muted { color: var(--muted); font-size: 12px; }
     .tiny { font-size: 11px; }
     #inspector { white-space: pre-wrap; line-height: 1.35; }
+    #worldStats { white-space: pre-wrap; line-height: 1.35; }
     .clickable { cursor: crosshair; }
   </style>
 </head>
@@ -92,6 +95,8 @@
         <span class="legend-item"><span class="swatch" style="background:var(--airlock)"></span>Airlock</span>
         <span class="legend-item"><span class="swatch" style="background:var(--window)"></span>Window</span>
         <span class="legend-item"><span class="swatch" style="background:var(--npc)"></span>NPC</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--power-on)"></span>Power On</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--power-off)"></span>Power Off</span>
       </div>
     </section>
 
@@ -108,9 +113,15 @@
             <option value="tile">Tile Type</option>
             <option value="compartment">Compartment ID</option>
             <option value="oxygen">Oxygen Heat</option>
+            <option value="power">Power Network</option>
           </select>
         </label>
         <div id="inspector" class="muted tiny" style="margin-top:8px">Click a tile to inspect.</div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <h3>World Stats</h3>
+        <div id="worldStats" class="muted tiny">loading...</div>
       </div>
 
       <div class="panel" style="margin-top:10px">
@@ -151,6 +162,7 @@
     const logEl = document.getElementById('log');
     const viewModeEl = document.getElementById('viewMode');
     const inspectorEl = document.getElementById('inspector');
+    const worldStatsEl = document.getElementById('worldStats');
 
     const randId = () => Math.random().toString(36).slice(2, 10);
     const val = (id) => document.getElementById(id).value;
@@ -252,6 +264,40 @@
       return 'floor';
     }
 
+
+    function powerClass(powerOn) {
+      return powerOn ? 'door' : 'wall';
+    }
+
+    function compartmentPowerMap(world) {
+      const out = new Map();
+      const networks = world?.power_state?.networks || [];
+      for (const net of networks) {
+        const on = Boolean(net?.powered_consumers) || Number(net?.generation || 0) > 0 || Number(net?.battery_discharge || 0) > 0;
+        for (const compId of net?.compartment_ids || []) {
+          out.set(String(compId), on);
+        }
+      }
+      return out;
+    }
+
+    function refreshWorldStats(world) {
+      const compartments = (world?.compartments || []).length;
+      const machines = (world?.machines || []).length;
+      const npcs = normalizeNpcList(world?.npcs).filter((n) => n?.alive !== false).length;
+      const power = world?.power_state || {};
+      const networks = (power.networks || []).length;
+      worldStatsEl.textContent = [
+        `compartments=${compartments}`,
+        `machines=${machines}`,
+        `alive_npcs=${npcs}`,
+        `power_gen=${power.generation ?? 0}`,
+        `power_demand=${power.demand ?? 0}`,
+        `power_networks=${networks}`
+      ].join('
+');
+    }
+
     function mapById(list) {
       const out = new Map();
       for (const item of list || []) {
@@ -275,6 +321,8 @@
       if (compartment) lines.push(`oxygen=${compartment.oxygen_percent}% pressure=${compartment.pressure}`);
       if (npcs.length) lines.push(`npcs: ${npcs.map((n) => n.name || n.id).join(', ')}`);
       if (machines.length) lines.push(`machines: ${machines.map((m) => m.type || m.id).join(', ')}`);
+      const powerMap = compartmentPowerMap(latestWorld);
+      if (compId != null && powerMap.has(String(compId))) lines.push(`power_network: ${powerMap.get(String(compId)) ? 'powered' : 'unpowered'}`);
       inspectorEl.textContent = lines.join('\n');
     }
 
@@ -310,6 +358,7 @@
         .filter((n) => n && n.alive !== false)
         .map((n) => `${n.x},${n.y}`));
       const compMap = mapById(world.compartments || []);
+      const powerMap = compartmentPowerMap(world);
 
       const cells = [];
       for (let y = 0; y < grid.length; y++) {
@@ -321,10 +370,12 @@
           let cls = tileClass(tile);
           if (viewModeEl.value === 'compartment') cls = compartmentClass(compId);
           if (viewModeEl.value === 'oxygen') cls = oxygenClass(oxygenPct);
+          if (viewModeEl.value === 'power') cls = powerClass(powerMap.get(String(compId)));
           const npc = npcByPos.has(`${x},${y}`) ? ' npc' : '';
           cells.push(`<div class="cell clickable ${cls}${npc}" data-x="${x}" data-y="${y}" title="${x},${y} ${tile}"></div>`);
         }
       }
+      refreshWorldStats(world);
       gridEl.style.gridTemplateColumns = `repeat(${grid[0].length}, 11px)`;
       gridEl.innerHTML = cells.join('');
       gridEl.querySelectorAll('.cell').forEach((cell) => {
