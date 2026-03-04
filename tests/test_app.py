@@ -18,6 +18,8 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'World Stats' in body
         assert 'Severity' in body
         assert 'Filter text' in body
+        assert 'Machine Quick Actions' in body
+        assert 'Place Machine at X/Y' in body
 
         health_payload = await health()
         assert health_payload == {'status': 'ok'}

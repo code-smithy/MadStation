@@ -13,6 +13,7 @@ Phase 7 focuses on a minimal operator-facing frontend first, then richer UX poli
 ## Phase 7B (planned)
 
 - Improve command ergonomics (tile inspector, machine quick-actions, work-order metadata forms).
+- Added Machine Quick Actions panel for one-click machine placement at selected coordinates. ✅
 - Added View Mode selector (Tile/Compartment/Oxygen) and click-to-inspect tile detail panel. ✅
 - Add focused visualization layers (power overlays, oxygen/compartment overlays, npc/work-order highlights).
 - Added Power Network view mode and compact world stats panel (power gen/demand/networks). ✅

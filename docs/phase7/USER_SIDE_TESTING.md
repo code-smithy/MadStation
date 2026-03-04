@@ -65,3 +65,11 @@ Use this checklist to validate the frontend MVP.
 2. Set **Severity** to `error` and verify only error-tagged lines remain visible.
 3. Use **Filter text** to narrow entries by substring (for example `ws_connected` or `invalid`).
 4. Return severity to `All` and clear filter text to restore full feed.
+
+
+## 8) Machine quick actions
+
+1. Set coordinates in Build panel and choose a machine type in **Machine Quick Actions**.
+2. Click **Place Machine at X/Y** and confirm command acks in the event log.
+3. Click the same tile in the map inspector and verify machine type appears in inspector details.
+4. If using `Power Network` mode, verify placement can affect world stats/power behavior over subsequent ticks.

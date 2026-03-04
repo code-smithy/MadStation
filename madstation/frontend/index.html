@@ -143,6 +143,21 @@
       </div>
 
       <div class="panel" style="margin-top:10px">
+        <h3>Machine Quick Actions</h3>
+        <label>Machine Type
+          <select id="machineType">
+            <option>SolarPanel</option>
+            <option>Reactor</option>
+            <option>Battery</option>
+            <option>OxygenGenerator</option>
+            <option>Light</option>
+            <option>Heater</option>
+          </select>
+        </label>
+        <button id="btnPlaceMachine">Place Machine at X/Y</button>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
         <h3>Create Work Order</h3>
         <label>Work Type
           <select id="workType">
@@ -481,6 +496,16 @@
       };
     }
 
+    function machinePreset(machineType) {
+      if (machineType === 'SolarPanel') return { type: 'SolarPanel', generation_kw: 4.0 };
+      if (machineType === 'Reactor') return { type: 'Reactor', generation_kw: 12.0 };
+      if (machineType === 'Battery') return { type: 'Battery', capacity: 50.0, discharge_kw: 5.0, stored: 25.0 };
+      if (machineType === 'OxygenGenerator') return { type: 'OxygenGenerator', rate_per_tick: 2.0, consume_kw: 2.0 };
+      if (machineType === 'Light') return { type: 'Light', consume_kw: 1.0 };
+      if (machineType === 'Heater') return { type: 'Heater', consume_kw: 2.0 };
+      return { type: machineType };
+    }
+
     function send(payload) {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         appendLog('ws not connected');
@@ -506,6 +531,17 @@
       client_command_id: `wo-${randId()}`,
       type: 'CreateWorkOrder',
       payload: { work_type: val('workType'), location: { x: Number(val('x')), y: Number(val('y')) } }
+    });
+
+    document.getElementById('btnPlaceMachine').onclick = () => send({
+      client_command_id: `machine-${randId()}`,
+      type: 'Build',
+      payload: {
+        x: Number(val('x')),
+        y: Number(val('y')),
+        tile_type: 'Floor',
+        machine: machinePreset(val('machineType')),
+      }
     });
 
     viewModeEl.onchange = () => refreshWorld().catch((err) => appendLog({ world_refresh_error: String(err) }));
