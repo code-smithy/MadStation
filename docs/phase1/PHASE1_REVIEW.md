@@ -14,31 +14,27 @@ Phase 1 is a solid scaffold and successfully proves the core loop shape (server 
 4. **First-write-wins conflict behavior** exists for same-target, same-tick contention.
 5. **Functional tests exist and pass** for key baseline semantics.
 
-## Gaps / risks to address next
+## Gaps / risks to address next (historical, now resolved)
 
-### 1) Duplicate command handling is missing (high priority)
-- Phase 0 command contract documents idempotency via `client_command_id`, but engine currently does not deduplicate repeated command IDs.
-- Risk: client retries can produce unintended duplicate effects.
+These Phase 1 review gaps were addressed during subsequent phases and are retained here as a trace log.
 
-### 2) Command acknowledgement semantics are ambiguous (high priority)
-- `enqueue_command` returns `ACCEPTED` immediately, and `_execute_tick` sends another `ACCEPTED` ack with `server_sequence_id`.
-- Risk: clients may treat pre-tick acceptance as final application and diverge from authoritative state.
+### 1) Duplicate command handling was missing (high priority) — ✅ Resolved
+- Engine now caches per-session command acknowledgements by `client_command_id` and replays cached responses for retries.
 
-### 3) Error handling on websocket send/broadcast is absent (high priority)
-- `_broadcast` and `_send_to` do not handle connection send failures.
-- Risk: one broken socket can interrupt tick behavior or crash loop depending on exception propagation.
+### 2) Command acknowledgement semantics were ambiguous (high priority) — ✅ Resolved
+- Ack contract now uses staged results (`QUEUED` then authoritative `APPLIED`/rejection after tick processing) with server sequence attribution.
 
-### 4) Determinism caveat: throttle uses wall clock (medium priority)
-- The simulation state is deterministic, but admission control uses `time.monotonic()`.
-- Acceptable for MVP transport behavior, but this must remain outside simulation-state determinism claims.
+### 3) Error handling on websocket send/broadcast was absent (high priority) — ✅ Resolved
+- Broadcast path now wraps sends safely and disconnects failing sockets without destabilizing tick loop.
 
-### 5) Validation depth is minimal (medium priority)
-- Payload validation checks only coordinate shape/range.
-- Missing command-type-specific schema checks and consistent rejection taxonomy.
+### 4) Determinism caveat: throttle uses wall clock (medium priority) — ✅ Clarified
+- Throttle remains transport-layer admission control; simulation-state determinism remains tick/sequence based.
 
-### 6) Test coverage could still miss protocol integration bugs (medium priority)
-- Current tests focus engine internals only.
-- No websocket roundtrip/integration test for `/ws` message lifecycle.
+### 5) Validation depth was minimal (medium priority) — ✅ Resolved
+- Command-type-specific payload validation now covers structural edits, machine payloads, and work-order metadata schemas.
+
+### 6) Test coverage could miss protocol integration bugs (medium priority) — ✅ Resolved
+- Added websocket lifecycle integration coverage in app tests in addition to existing engine/failure-path tests.
 
 ## Recommended Phase 1.1 backlog (ordered)
 
