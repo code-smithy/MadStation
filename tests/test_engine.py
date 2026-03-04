@@ -1652,6 +1652,8 @@ def test_phase5b_feed_oxygen_generator_requeues_when_unpowered() -> None:
 
     order = engine.world_state["work_orders"][0]
     assert order["status"] == "Queued"
+    assert "completed_tick" not in order
+    assert "completed_by_npc_id" not in order
     assert engine.world_state["items"][0]["consumed"] is False
     assert any(
         change.get("type") == "work_order_unassigned"

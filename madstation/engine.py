@@ -1333,11 +1333,6 @@ class SimulationEngine:
         if int(active_order["progress"]) < int(active_order.get("required_progress", 2)):
             return
 
-        active_order["status"] = "Completed"
-        active_order["completed_tick"] = self.tick
-        active_order["completed_by_npc_id"] = npc["id"]
-        npc["current_work_order_id"] = None
-
         work_type = str(active_order.get("work_type", ""))
         disposed_body_id = active_order.get("body_id")
         if work_type == "DisposeBody" and isinstance(disposed_body_id, str):
@@ -1465,6 +1460,8 @@ class SimulationEngine:
                 active_order["progress"] = 0
                 active_order.pop("assignee_npc_id", None)
                 active_order.pop("assigned_tick", None)
+                active_order.pop("completed_tick", None)
+                active_order.pop("completed_by_npc_id", None)
                 npc["current_work_order_id"] = None
                 work_order_changes.append({
                     "type": "work_order_unassigned",
@@ -1477,6 +1474,8 @@ class SimulationEngine:
                 active_order["progress"] = 0
                 active_order.pop("assignee_npc_id", None)
                 active_order.pop("assigned_tick", None)
+                active_order.pop("completed_tick", None)
+                active_order.pop("completed_by_npc_id", None)
                 npc["current_work_order_id"] = None
                 work_order_changes.append({
                     "type": "work_order_unassigned",
@@ -1497,6 +1496,11 @@ class SimulationEngine:
                         comp["pressure"] = round(float(comp["oxygen_percent"]) / 100, 3)
                         break
                 npc_changes.append({"type": "item_consumed", "item_id": water_item["id"], "reason": "feed_oxygen_generator"})
+
+        active_order["status"] = "Completed"
+        active_order["completed_tick"] = self.tick
+        active_order["completed_by_npc_id"] = npc["id"]
+        npc["current_work_order_id"] = None
 
         work_order_changes.append(
             {
