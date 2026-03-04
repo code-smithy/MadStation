@@ -121,6 +121,10 @@
         <span class="legend-item"><span class="swatch" style="background:var(--npc)"></span>NPC</span>
         <span class="legend-item"><span class="swatch" style="background:var(--power-on)"></span>Power On</span>
         <span class="legend-item"><span class="swatch" style="background:var(--power-off)"></span>Power Off</span>
+        <span class="legend-item"><span class="swatch" style="background:#1f4aff"></span>Temp Cold</span>
+        <span class="legend-item"><span class="swatch" style="background:#26d4ff"></span>Temp Mild</span>
+        <span class="legend-item"><span class="swatch" style="background:#ffd166"></span>Temp Warm</span>
+        <span class="legend-item"><span class="swatch" style="background:#ff4d4f"></span>Temp Hot</span>
         <span class="legend-item"><span class="swatch" style="background:var(--wo-queued)"></span>WO Queued</span>
         <span class="legend-item"><span class="swatch" style="background:var(--wo-active)"></span>WO Active</span>
       </div>
@@ -139,6 +143,7 @@
             <option value="tile">Tile Type</option>
             <option value="compartment">Compartment ID</option>
             <option value="oxygen">Oxygen Heat</option>
+            <option value="temperature">Temperature Heat</option>
             <option value="power">Power Network</option>
           </select>
         </label>
@@ -175,6 +180,7 @@
             <option>OxygenGenerator</option>
             <option>Light</option>
             <option>Heater</option>
+            <option>Cooler</option>
           </select>
         </label>
         <button id="btnPlaceMachine">Place Machine at X/Y</button>
@@ -313,7 +319,7 @@
     function inferSeverity(obj) {
       const text = (typeof obj === 'string' ? obj : JSON.stringify(obj)).toLowerCase();
       if (text.includes('error') || text.includes('invalid') || text.includes('disconnected')) return 'error';
-      if (text.includes('rejected') || text.includes('unpowered') || text.includes('warning')) return 'warn';
+      if (text.includes('rejected') || text.includes('unpowered') || text.includes('warning') || text.includes('thermal_hazard')) return 'warn';
       return 'info';
     }
 
@@ -370,6 +376,15 @@
       return 'floor';
     }
 
+    function temperatureClass(tempC) {
+      if (!Number.isFinite(tempC)) return 'vacuum';
+      if (tempC <= 0) return 'wall';
+      if (tempC < 16) return 'door';
+      if (tempC <= 28) return 'airlock';
+      if (tempC <= 38) return 'floor';
+      return 'vacuum';
+    }
+
 
     function powerClass(powerOn) {
       return powerOn ? 'door' : 'wall';
@@ -393,15 +408,18 @@
       const npcs = normalizeNpcList(world?.npcs).filter((n) => n?.alive !== false).length;
       const power = world?.power_state || {};
       const networks = (power.networks || []).length;
+      const thermal = world?.thermal_state || {};
       worldStatsEl.textContent = [
         `compartments=${compartments}`,
         `machines=${machines}`,
         `alive_npcs=${npcs}`,
         `power_gen=${power.generation ?? 0}`,
         `power_demand=${power.demand ?? 0}`,
-        `power_networks=${networks}`
-      ].join('
-');
+        `power_networks=${networks}`,
+        `thermal_avg=${thermal.avg_temp_c ?? 'n/a'}C`,
+        `thermal_min=${thermal.min_temp_c ?? 'n/a'}C`,
+        `thermal_max=${thermal.max_temp_c ?? 'n/a'}C`
+      ].join('\n');
     }
 
     function mapById(list) {
@@ -418,6 +436,7 @@
       const compId = latestWorld.compartment_index?.[`${x},${y}`] ?? null;
       const compartmentMap = mapById(latestWorld.compartments || []);
       const compartment = compartmentMap.get(String(compId)) || null;
+      const tempC = Number(latestWorld.temperature_grid?.[y]?.[x]);
       const npcs = normalizeNpcList(latestWorld.npcs).filter((n) => n && n.x === x && n.y === y && n.alive !== false);
       const machines = (latestWorld.machines || []).filter((m) => m && m.location && m.location.x === x && m.location.y === y);
       const workOrders = normalizeWorkOrders(latestWorld.work_orders).filter((wo) => wo && wo.location && wo.location.x === x && wo.location.y === y);
@@ -426,6 +445,8 @@
         `compartment: ${compId ?? 'none'}`
       ];
       if (compartment) lines.push(`oxygen=${compartment.oxygen_percent}% pressure=${compartment.pressure}`);
+      if (Number.isFinite(tempC)) lines.push(`temperature=${tempC.toFixed(2)}C`);
+      if (compartment && Number.isFinite(Number(compartment.temperature))) lines.push(`compartment_temp=${Number(compartment.temperature).toFixed(2)}C`);
       if (npcs.length) lines.push(`npcs: ${npcs.map((n) => n.name || n.id).join(', ')}`);
       if (machines.length) lines.push(`machines: ${machines.map((m) => m.type || m.id).join(', ')}`);
       if (workOrders.length) lines.push(`work_orders: ${workOrders.map((w) => `${w.work_type || 'Work'}:${w.status || 'Unknown'}`).join(', ')}`);
@@ -492,9 +513,11 @@
           const tile = row[x];
           const compId = world.compartment_index?.[`${x},${y}`] ?? null;
           const oxygenPct = compMap.get(String(compId))?.oxygen_percent;
+          const tempC = Number(world.temperature_grid?.[y]?.[x]);
           let cls = tileClass(tile);
           if (viewModeEl.value === 'compartment') cls = compartmentClass(compId);
           if (viewModeEl.value === 'oxygen') cls = oxygenClass(oxygenPct);
+          if (viewModeEl.value === 'temperature') cls = temperatureClass(tempC);
           if (viewModeEl.value === 'power') cls = powerClass(powerMap.get(String(compId)));
           const posKey = `${x},${y}`;
           const npc = highlightNpcEl.checked && npcByPos.has(posKey) ? ' npc' : '';
@@ -574,6 +597,7 @@
       if (machineType === 'OxygenGenerator') return { type: 'OxygenGenerator', rate_per_tick: 2.0, consume_kw: 2.0 };
       if (machineType === 'Light') return { type: 'Light', consume_kw: 1.0 };
       if (machineType === 'Heater') return { type: 'Heater', consume_kw: 2.0 };
+      if (machineType === 'Cooler') return { type: 'Cooler', consume_kw: 2.0 };
       return { type: machineType };
     }
 
