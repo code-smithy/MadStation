@@ -164,6 +164,26 @@
             <option>MineIce</option><option>HaulItem</option><option>RefineIce</option><option>FeedOxygenGenerator</option>
           </select>
         </label>
+        <label>Item ID (for Haul/Refine/Feed)
+          <input id="woItemId" type="text" placeholder="item-123">
+        </label>
+        <label>Mine Item Type
+          <select id="woItemType">
+            <option>IceChunk</option>
+          </select>
+        </label>
+        <label>Destination X/Y (Haul)
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <input id="woDestX" type="number" min="0" max="49" value="20">
+            <input id="woDestY" type="number" min="0" max="49" value="20">
+          </div>
+        </label>
+        <label>Generator X/Y (Feed)
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <input id="woGenX" type="number" min="0" max="49" value="20">
+            <input id="woGenY" type="number" min="0" max="49" value="20">
+          </div>
+        </label>
         <button id="btnWork">Send CreateWorkOrder</button>
       </div>
 
@@ -527,10 +547,41 @@
       payload: { x: Number(val('x')), y: Number(val('y')) }
     });
 
+    function workOrderMetadata(workType) {
+      if (workType === 'MineIce') {
+        return { item_type: val('woItemType') };
+      }
+      if (workType === 'HaulItem') {
+        return {
+          item_id: val('woItemId'),
+          destination: { x: Number(val('woDestX')), y: Number(val('woDestY')) },
+        };
+      }
+      if (workType === 'RefineIce') {
+        return { item_id: val('woItemId') };
+      }
+      if (workType === 'FeedOxygenGenerator') {
+        return {
+          item_id: val('woItemId'),
+          generator_location: { x: Number(val('woGenX')), y: Number(val('woGenY')) },
+        };
+      }
+      return {};
+    }
+
+    function buildWorkOrderPayload() {
+      const workType = val('workType');
+      return {
+        work_type: workType,
+        location: { x: Number(val('x')), y: Number(val('y')) },
+        metadata: workOrderMetadata(workType),
+      };
+    }
+
     document.getElementById('btnWork').onclick = () => send({
       client_command_id: `wo-${randId()}`,
       type: 'CreateWorkOrder',
-      payload: { work_type: val('workType'), location: { x: Number(val('x')), y: Number(val('y')) } }
+      payload: buildWorkOrderPayload()
     });
 
     document.getElementById('btnPlaceMachine').onclick = () => send({

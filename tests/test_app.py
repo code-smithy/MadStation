@@ -20,6 +20,9 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'Filter text' in body
         assert 'Machine Quick Actions' in body
         assert 'Place Machine at X/Y' in body
+        assert 'Item ID (for Haul/Refine/Feed)' in body
+        assert 'Destination X/Y (Haul)' in body
+        assert 'Generator X/Y (Feed)' in body
 
         health_payload = await health()
         assert health_payload == {'status': 'ok'}

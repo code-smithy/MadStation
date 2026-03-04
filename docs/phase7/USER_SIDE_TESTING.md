@@ -73,3 +73,11 @@ Use this checklist to validate the frontend MVP.
 2. Click **Place Machine at X/Y** and confirm command acks in the event log.
 3. Click the same tile in the map inspector and verify machine type appears in inspector details.
 4. If using `Power Network` mode, verify placement can affect world stats/power behavior over subsequent ticks.
+
+
+## 9) Work-order metadata controls
+
+1. Select `HaulItem`, set `Item ID` and `Destination X/Y`, then submit and confirm ack is not INVALID_PAYLOAD.
+2. Select `RefineIce`, set `Item ID`, submit, and verify queued/apply acknowledgment.
+3. Select `FeedOxygenGenerator`, set `Item ID` and `Generator X/Y`, then submit and confirm ack.
+4. Select `MineIce` and ensure `Mine Item Type` defaults to `IceChunk`.
