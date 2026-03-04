@@ -89,3 +89,8 @@ Use this checklist to validate the frontend MVP.
 2. Confirm NPC tiles show red dots and work-order target tiles show queued/active border highlights.
 3. Toggle each highlight off and verify the corresponding overlay disappears while base tile view remains.
 4. Click a highlighted work-order tile and confirm inspector includes `work_orders:` with status labels.
+
+
+## 11) 7B completion gate
+
+Mark Phase 7B complete only after sections 6, 7, 8, 9, and 10 pass in one run without manual JSON payload editing.
