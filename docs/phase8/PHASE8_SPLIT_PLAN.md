@@ -44,4 +44,4 @@ Track implementation state in `docs/phase8/TASKLIST.md`.
 
 - 8A implemented.
 - 8B implemented.
-- 8C implemented for core UI scope; final end-to-end validation + remaining test hardening tracked in `docs/phase8/TASKLIST.md`.
+- 8C implemented and validated end-to-end; thermal UI, NPC flee semantics, and acceptance coverage are complete for current phase scope.

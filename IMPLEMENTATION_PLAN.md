@@ -177,21 +177,21 @@
 
 ---
 
-## Immediate Backlog (Post-Phase-7 follow-ons)
+## Immediate Backlog (Post-Phase-8 follow-ons)
 
-1. Door power-loss behavior model (deferred from early phases).
-2. Enforce placement constraints currently documented as future-ready.
-3. Add topology-aware (non-global) storage access constraints.
-4. Expand deterministic replay/stress harness for larger command streams.
-5. Add Phase 7 UI regression tests for overlay/filter/inspector interactions.
-6. Add optional per-tile environment resolution path (post compartment-level baseline).
-7. Add frontend UX polish pass for accessibility and compact layouts.
-8. Add operator presets/scenarios for failure-cascade demos.
-9. Add performance profiling pass for >5 concurrent clients.
-10. Add explicit release checklist tying docs, tests, and runtime observability.
-11. Add deterministic temperature simulation (vacuum cooling, machine heat, heaters/coolers).
+1. [ ] Door power-loss behavior model (deferred from early phases).
+2. [ ] Enforce placement constraints currently documented as future-ready.
+3. [ ] Add topology-aware (non-global) storage access constraints.
+4. [ ] Expand deterministic replay/stress harness for larger command streams.
+5. [x] Add Phase 7 UI regression tests for overlay/filter/inspector interactions.
+6. [ ] Add optional per-tile environment resolution path (post compartment-level baseline).
+7. [ ] Add frontend UX polish pass for accessibility and compact layouts.
+8. [ ] Add operator presets/scenarios for failure-cascade demos.
+9. [ ] Add performance profiling pass for >5 concurrent clients.
+10. [x] Add explicit release checklist tying docs, tests, and runtime observability.
+11. [x] Add deterministic temperature simulation (vacuum cooling, machine heat, heaters/coolers).
 
-Detailed backlog tracking lives in `docs/BACKLOG.md`.
+Detailed backlog tracking lives in `docs/BACKLOG.md` and release-gate execution lives in `docs/RELEASE_CHECKLIST.md`.
 
 ---
 

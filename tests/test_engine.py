@@ -2492,3 +2492,87 @@ def test_phase8b_trapped_npc_takes_thermal_damage_and_death_cause_is_thermal() -
     assert any(change.get("type") == "npc_thermal_hazard" for change in npc_changes)
     assert death_log_appends
     assert death_log_appends[-1]["cause"] == "thermal_hazard"
+
+
+def test_phase8_end_to_end_acceptance_coverage() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+
+    # 1) status/world thermal observability baseline
+    status = engine.runtime_status()
+    assert "thermal_avg_temp_c" in status
+    assert "thermal_min_temp_c" in status
+    assert "thermal_max_temp_c" in status
+    assert "thermal_danger_tile_count" in status
+    assert "temperature_grid" in engine.world_snapshot()["world"]
+
+    # Build a tiny deterministic thermal test corridor.
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(20, 25):
+        engine.world_state["grid"][20][x] = "Floor"
+    engine.world_state["grid"][19][20] = "Vacuum"  # exposure point
+    engine._sync_temperature_grid_with_tiles()
+    for y in range(50):
+        for x in range(50):
+            if engine.world_state["grid"][y][x] != "Vacuum":
+                engine.world_state["temperature_grid"][y][x] = 21.0
+    engine._recompute_compartments()
+
+    # 2/3) Heater powered then unpowered
+    engine.world_state["machines"]["21,20"] = {"type": "Heater", "enabled": True, "consume_kw": 2.0}
+    engine.world_state["power_state"]["powered_consumers"] = ["21,20"]
+    before = engine.world_state["temperature_grid"][20][21]
+    engine._update_temperature()
+    heated = engine.world_state["temperature_grid"][20][21]
+    assert heated > before
+
+    engine.world_state["power_state"]["powered_consumers"] = []
+    engine._update_temperature()
+    after_unpowered = engine.world_state["temperature_grid"][20][21]
+    assert after_unpowered <= heated
+
+    # 4) Cooler powered reduces local temperature
+    engine.world_state["machines"]["22,20"] = {"type": "Cooler", "enabled": True, "consume_kw": 2.0}
+    engine.world_state["power_state"]["powered_consumers"] = ["22,20"]
+    before_cool = engine.world_state["temperature_grid"][20][22]
+    engine._update_temperature()
+    after_cool = engine.world_state["temperature_grid"][20][22]
+    assert after_cool < before_cool
+
+    # 5) Vacuum exposure cools adjacent tiles.
+    tile_before = engine.world_state["temperature_grid"][20][20]
+    engine._update_temperature()
+    tile_after = engine.world_state["temperature_grid"][20][20]
+    assert tile_after < tile_before
+
+    # 6) Machine waste heat (reactor) increases local temperature.
+    engine.world_state["machines"]["23,20"] = {"type": "Reactor", "enabled": True, "generation_kw": 12.0}
+    reactor_before = engine.world_state["temperature_grid"][20][23]
+    engine._update_temperature()
+    reactor_after = engine.world_state["temperature_grid"][20][23]
+    assert reactor_after > reactor_before
+
+    # 7) NPC flee behavior from thermal hazard when path exists.
+    engine.world_state["temperature_grid"][20][24] = 60.0
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-phase8-e2e",
+            "name": "E2E",
+            "x": 24,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": None,
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    npc_changes, _, _ = engine._update_npcs()
+    assert any(change.get("type") == "npc_thermal_flee" for change in npc_changes)
+
+    # 8) Thermal state remains represented after updates.
+    thermal = engine.world_state.get("thermal_state", {})
+    assert set(["avg_temp_c", "min_temp_c", "max_temp_c", "danger_tile_count"]).issubset(thermal.keys())

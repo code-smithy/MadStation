@@ -23,6 +23,12 @@
 - `docs/phase6/USER_SIDE_TESTING.md`
 - `docs/phase7/PHASE7_SPLIT_PLAN.md`
 - `docs/phase7/USER_SIDE_TESTING.md`
+- `docs/phase8/PHASE8_SPLIT_PLAN.md`
+- `docs/phase8/TASKLIST.md`
+- `docs/phase8/TEMPERATURE_GAMEPLAY_PLAN.md`
+- `docs/phase8/USER_SIDE_TESTING.md`
+- `docs/BACKLOG.md`
+- `docs/RELEASE_CHECKLIST.md`
 
 ## Phase 1 server scaffold (completed)
 
@@ -189,4 +195,10 @@ Phase 6 is complete for current roadmap scope: configurable snapshot cadence/pat
 
 ## Phase 7 progress
 
-Phase 7 has started with a frontend MVP slice: server-hosted UI at `/`, live grid/status rendering, basic build/deconstruct/work-order controls, and websocket-driven event updates. See `docs/phase7/PHASE7_SPLIT_PLAN.md` and `docs/phase7/USER_SIDE_TESTING.md`. Post-Phase-7 follow-ons are tracked in `docs/BACKLOG.md`.
+Phase 7 is complete for current roadmap scope: server-hosted UI at `/`, live grid/status rendering, build/deconstruct/machine/work-order controls, overlays/inspector/filter ergonomics, and websocket-driven updates. See `docs/phase7/PHASE7_SPLIT_PLAN.md` and `docs/phase7/USER_SIDE_TESTING.md`.
+
+## Phase 8 progress
+
+Phase 8 is complete for current roadmap scope: per-tile thermal simulation, powered heater/cooler behavior, machine waste heat, thermal hazard/flee behavior, temperature UX in frontend, and acceptance coverage documented in `docs/phase8/TASKLIST.md`.
+
+Post-Phase-8 follow-ons are tracked in `docs/BACKLOG.md`. Release gates are tracked in `docs/RELEASE_CHECKLIST.md`.
