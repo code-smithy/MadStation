@@ -38,3 +38,10 @@ Phase 8 adds deterministic temperature gameplay and thermal operator workflows.
 ## Execution tasklist
 
 Track implementation state in `docs/phase8/TASKLIST.md`.
+
+
+## Current status
+
+- 8A implemented.
+- 8B implemented.
+- 8C implemented for core UI scope; final end-to-end validation + remaining test hardening tracked in `docs/phase8/TASKLIST.md`.

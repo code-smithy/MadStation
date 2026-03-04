@@ -17,19 +17,20 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'View Mode' in body
         assert 'Click a tile to inspect.' in body
         assert 'Power Network' in body
-<<<<<<< codex/review-repo-status-and-next-steps-u954yc
         assert 'Temperature Heat' in body
-=======
->>>>>>> main
+        assert 'Temp Cold' in body
+        assert 'Temp Hot' in body
+        assert 'World Stats' in body
+        assert 'thermal_avg=' in body
+        assert 'temperature=' in body
+        assert 'Temperature Heat' in body
         assert 'World Stats' in body
         assert 'Severity' in body
         assert 'Filter text' in body
         assert 'Machine Quick Actions' in body
         assert 'Place Machine at X/Y' in body
-<<<<<<< codex/review-repo-status-and-next-steps-u954yc
         assert 'Cooler' in body
-=======
->>>>>>> main
+        assert 'Cooler' in body
         assert 'Item ID (for Haul/Refine/Feed)' in body
         assert 'Destination X/Y (Haul)' in body
         assert 'Generator X/Y (Feed)' in body
