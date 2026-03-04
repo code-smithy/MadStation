@@ -35,6 +35,7 @@ MACHINE_SOLAR_PANEL = "SolarPanel"
 MACHINE_REACTOR = "Reactor"
 MACHINE_BATTERY = "Battery"
 MACHINE_HEATER = "Heater"
+MACHINE_COOLER = "Cooler"
 MACHINE_LIGHT = "Light"
 
 POWER_PRIORITY = dict(SETTINGS.power_priority_tiers)
@@ -98,6 +99,13 @@ class SimulationEngine:
             "machines": {},
             "compartments": [],
             "compartment_index": {},
+            "temperature_grid": self._build_default_temperature_grid(grid),
+            "thermal_state": {
+                "avg_temp_c": SETTINGS.thermal_default_temp_c,
+                "min_temp_c": SETTINGS.thermal_default_temp_c,
+                "max_temp_c": SETTINGS.thermal_default_temp_c,
+                "danger_tile_count": 0,
+            },
         }
         self.connections: dict[str, SocketLike] = {}
         self.command_queue: asyncio.Queue[PendingCommand] = asyncio.Queue()
@@ -146,6 +154,12 @@ class SimulationEngine:
                 )
                 grid[y][x] = TILE_WALL if is_border else TILE_FLOOR
         return grid
+
+    @staticmethod
+    def _build_default_temperature_grid(grid: list[list[str]]) -> list[list[float]]:
+        base = float(SETTINGS.thermal_default_temp_c)
+        space = float(SETTINGS.thermal_space_temp_c)
+        return [[space if tile == TILE_VACUUM else base for tile in row] for row in grid]
 
     def next_session_id(self) -> str:
         return f"anon-{uuid4().hex}"
@@ -224,6 +238,10 @@ class SimulationEngine:
             "replay_log_path": str(self.replay_log_path),
             "restored_from_snapshot": int(self.restored_from_snapshot),
             "replay_commands_applied_on_restore": self.replay_commands_applied_on_restore,
+            "thermal_avg_temp_c": float(self.world_state.get("thermal_state", {}).get("avg_temp_c", SETTINGS.thermal_default_temp_c)),
+            "thermal_min_temp_c": float(self.world_state.get("thermal_state", {}).get("min_temp_c", SETTINGS.thermal_default_temp_c)),
+            "thermal_max_temp_c": float(self.world_state.get("thermal_state", {}).get("max_temp_c", SETTINGS.thermal_default_temp_c)),
+            "thermal_danger_tile_count": int(self.world_state.get("thermal_state", {}).get("danger_tile_count", 0)),
         }
 
     def stop(self) -> None:
@@ -305,24 +323,28 @@ class SimulationEngine:
 
         before_compartments = self._compartment_snapshot_map()
         before_power = self._power_snapshot()
+        before_thermal_state = dict(self.world_state.get("thermal_state", {}))
         if topology_changed:
             self._recompute_compartments()
 
         self._update_power()
         self._update_oxygen()
+        self._update_temperature()
         npc_changes, work_order_changes, death_log_appends = self._update_npcs()
 
         after_compartments = self._compartment_snapshot_map()
         after_power = self._power_snapshot()
+        after_thermal_state = dict(self.world_state.get("thermal_state", {}))
         compartment_changes = self._compartment_changes(before_compartments, after_compartments)
         power_events = self._power_events(before_power, after_power)
+        thermal_events = self._thermal_events(before_thermal_state, after_thermal_state)
 
         delta = DeltaTick(
             tick=self.tick,
             world_hash=self._world_hash(),
             command_count=applied,
             tile_changes=tile_changes,
-            entity_changes=compartment_changes + power_events + npc_changes,
+            entity_changes=compartment_changes + power_events + thermal_events + npc_changes,
             work_order_changes=command_work_order_changes + work_order_changes,
             death_log_appends=death_log_appends,
         )
@@ -386,8 +408,48 @@ class SimulationEngine:
         self.world_state.setdefault("machines", {})
         self.world_state.setdefault("compartments", [])
         self.world_state.setdefault("compartment_index", {})
+        self.world_state.setdefault("temperature_grid", self._build_default_temperature_grid(self.world_state.get("grid", [])))
+        self._ensure_temperature_grid_dimensions()
+        self._refresh_thermal_state_summary()
         if not self.world_state.get("npcs"):
             self._initialize_npcs()
+
+    def _ensure_temperature_grid_dimensions(self) -> None:
+        grid = self.world_state.get("grid", [])
+        temp_grid = self.world_state.get("temperature_grid", [])
+        if not isinstance(grid, list) or not grid:
+            self.world_state["temperature_grid"] = []
+            return
+        height = len(grid)
+        width = len(grid[0])
+        if (
+            not isinstance(temp_grid, list)
+            or len(temp_grid) != height
+            or any(not isinstance(row, list) or len(row) != width for row in temp_grid)
+        ):
+            self.world_state["temperature_grid"] = self._build_default_temperature_grid(grid)
+
+    def _refresh_thermal_state_summary(self) -> None:
+        temp_grid = self.world_state.get("temperature_grid", [])
+        values = [float(v) for row in temp_grid if isinstance(row, list) for v in row if isinstance(v, (int, float))]
+        if not values:
+            default_temp = float(SETTINGS.thermal_default_temp_c)
+            summary = {
+                "avg_temp_c": default_temp,
+                "min_temp_c": default_temp,
+                "max_temp_c": default_temp,
+                "danger_tile_count": 0,
+            }
+        else:
+            hazard_min = 5.0
+            hazard_max = 45.0
+            summary = {
+                "avg_temp_c": round(sum(values) / len(values), 2),
+                "min_temp_c": round(min(values), 2),
+                "max_temp_c": round(max(values), 2),
+                "danger_tile_count": sum(1 for value in values if value < hazard_min or value > hazard_max),
+            }
+        self.world_state["thermal_state"] = summary
 
     def _load_snapshot_if_available(self) -> bool:
         if not self.snapshot_path.exists():
@@ -621,7 +683,7 @@ class SimulationEngine:
                 and self._valid_positive(machine.get("discharge_kw", 5.0), 200.0)
                 and self._valid_non_negative(machine.get("stored", 0.0), 10000.0)
             )
-        if machine_type in {MACHINE_HEATER, MACHINE_LIGHT}:
+        if machine_type in {MACHINE_HEATER, MACHINE_COOLER, MACHINE_LIGHT}:
             return self._valid_positive(machine.get("consume_kw", 1.0), 100.0)
         return False
 
@@ -662,6 +724,11 @@ class SimulationEngine:
         changed_tile = before != after
         if changed_tile:
             self.world_state["grid"][y][x] = after
+            self._ensure_temperature_grid_dimensions()
+            if after == TILE_VACUUM:
+                self.world_state["temperature_grid"][y][x] = float(SETTINGS.thermal_space_temp_c)
+            elif before == TILE_VACUUM:
+                self.world_state["temperature_grid"][y][x] = float(SETTINGS.thermal_default_temp_c)
             if after == TILE_DOOR:
                 self.world_state["door_states"][key] = {"open": False}
             else:
@@ -751,6 +818,12 @@ class SimulationEngine:
                 "enabled": bool(machine.get("enabled", True)),
                 "consume_kw": float(machine.get("consume_kw", 2.0)),
             }
+        if machine_type == MACHINE_COOLER:
+            return {
+                "type": MACHINE_COOLER,
+                "enabled": bool(machine.get("enabled", True)),
+                "consume_kw": float(machine.get("consume_kw", 2.0)),
+            }
         if machine_type == MACHINE_LIGHT:
             return {
                 "type": MACHINE_LIGHT,
@@ -801,6 +874,8 @@ class SimulationEngine:
 
     def _recompute_compartments(self) -> None:
         grid = self.world_state["grid"]
+        self._ensure_temperature_grid_dimensions()
+        temp_grid = self.world_state.get("temperature_grid", [])
         width = self.world_state["world"]["width"]
         height = self.world_state["world"]["height"]
         visited: set[tuple[int, int]] = set()
@@ -808,6 +883,7 @@ class SimulationEngine:
         compartments: list[dict] = []
 
         old_map = {int(c["id"]): float(c.get("oxygen_percent", 100.0)) for c in self.world_state.get("compartments", [])}
+        old_temp_map = {int(c["id"]): float(c.get("temperature", SETTINGS.thermal_default_temp_c)) for c in self.world_state.get("compartments", [])}
         old_index = self.world_state.get("compartment_index", {})
 
         def oxygen_for_tile(tx: int, ty: int) -> float:
@@ -815,6 +891,16 @@ class SimulationEngine:
             if old_id is None:
                 return 100.0
             return old_map.get(int(old_id), 100.0)
+
+        def temp_for_tile(tx: int, ty: int) -> float:
+            if 0 <= ty < len(temp_grid) and 0 <= tx < len(temp_grid[ty]):
+                value = temp_grid[ty][tx]
+                if isinstance(value, (int, float)):
+                    return float(value)
+            old_id = old_index.get(self._xy_key(tx, ty))
+            if old_id is None:
+                return float(SETTINGS.thermal_default_temp_c)
+            return old_temp_map.get(int(old_id), float(SETTINGS.thermal_default_temp_c))
 
         comp_id = 1
         for y in range(height):
@@ -826,11 +912,13 @@ class SimulationEngine:
                 visited.add((x, y))
                 tiles: list[tuple[int, int]] = []
                 oxygen_total = 0.0
+                temp_total = 0.0
 
                 while queue:
                     cx, cy = queue.pop()
                     tiles.append((cx, cy))
                     oxygen_total += oxygen_for_tile(cx, cy)
+                    temp_total += temp_for_tile(cx, cy)
                     for nx, ny in self._neighbors4(cx, cy, width, height):
                         if (nx, ny) in visited or grid[ny][nx] not in COMPARTMENT_FILL_TILES:
                             continue
@@ -838,12 +926,13 @@ class SimulationEngine:
                         queue.append((nx, ny))
 
                 oxygen = oxygen_total / max(1, len(tiles))
+                temperature = temp_total / max(1, len(tiles))
                 compartments.append(
                     {
                         "id": comp_id,
                         "oxygen_percent": round(oxygen, 2),
                         "pressure": round(oxygen / 100, 3),
-                        "temperature": 21.0,
+                        "temperature": round(temperature, 2),
                         "radiation": 0.1,
                         "contamination": 0.0,
                         "tile_count": len(tiles),
@@ -855,6 +944,7 @@ class SimulationEngine:
 
         self.world_state["compartments"] = compartments
         self.world_state["compartment_index"] = compartment_index
+        self._refresh_thermal_state_summary()
 
     def _update_power(self) -> None:
         machines = self.world_state["machines"]
@@ -1046,6 +1136,85 @@ class SimulationEngine:
             next_oxygen = max(0.0, min(100.0, next_oxygen))
             compartment["oxygen_percent"] = round(next_oxygen, 2)
             compartment["pressure"] = round(next_oxygen / 100, 3)
+
+    def _update_temperature(self) -> None:
+        self._ensure_temperature_grid_dimensions()
+        grid = self.world_state.get("grid", [])
+        temp_grid = self.world_state.get("temperature_grid", [])
+        if not grid or not temp_grid:
+            self._refresh_thermal_state_summary()
+            return
+
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+        space_temp = float(SETTINGS.thermal_space_temp_c)
+        transfer_rate = float(SETTINGS.thermal_transfer_rate)
+        max_transfer = float(SETTINGS.thermal_max_transfer_delta_c_per_tick)
+        vacuum_cooling_per_edge = float(SETTINGS.thermal_vacuum_cooling_per_edge_c_per_tick)
+        powered = set(self.world_state.get("power_state", {}).get("powered_consumers", []))
+
+        machine_heat_delta: dict[str, float] = {
+            MACHINE_REACTOR: 0.45,
+            MACHINE_OXYGEN_GENERATOR: 0.18,
+            MACHINE_HEATER: float(SETTINGS.thermal_heater_delta_c_per_tick),
+            MACHINE_COOLER: -float(SETTINGS.thermal_cooler_delta_c_per_tick),
+            MACHINE_LIGHT: 0.05,
+        }
+
+        next_grid = [row[:] for row in temp_grid]
+        for y in range(height):
+            for x in range(width):
+                current = float(temp_grid[y][x])
+                tile = grid[y][x]
+                if tile == TILE_VACUUM:
+                    next_grid[y][x] = space_temp
+                    continue
+
+                delta = 0.0
+                vacuum_edges = 0
+                for nx, ny in self._neighbors4(x, y, width, height):
+                    neighbor_tile = grid[ny][nx]
+                    neighbor_temp = float(temp_grid[ny][nx])
+                    gradient = (neighbor_temp - current) * transfer_rate
+                    delta += max(-max_transfer, min(max_transfer, gradient))
+                    if neighbor_tile == TILE_VACUUM:
+                        vacuum_edges += 1
+
+                if vacuum_edges > 0:
+                    target_delta = (space_temp - current) * 0.02 * float(vacuum_edges)
+                    delta += max(-vacuum_cooling_per_edge * vacuum_edges, min(0.0, target_delta))
+
+                key = self._xy_key(x, y)
+                machine = self.world_state.get("machines", {}).get(key)
+                if isinstance(machine, dict) and machine.get("enabled", True):
+                    machine_type = machine.get("type")
+                    heat = machine_heat_delta.get(str(machine_type))
+                    requires_power = str(machine_type) in POWER_PRIORITY
+                    if heat is not None and (not requires_power or key in powered):
+                        delta += heat
+
+                next_grid[y][x] = round(max(space_temp, min(80.0, current + delta)), 2)
+
+        self.world_state["temperature_grid"] = next_grid
+
+        index = self.world_state.get("compartment_index", {})
+        if index:
+            comp_totals: dict[int, float] = {}
+            comp_counts: dict[int, int] = {}
+            for y in range(height):
+                for x in range(width):
+                    comp_id = index.get(self._xy_key(x, y))
+                    if comp_id is None:
+                        continue
+                    cid = int(comp_id)
+                    comp_totals[cid] = comp_totals.get(cid, 0.0) + float(next_grid[y][x])
+                    comp_counts[cid] = comp_counts.get(cid, 0) + 1
+            for compartment in self.world_state.get("compartments", []):
+                cid = int(compartment.get("id", -1))
+                if cid in comp_totals and comp_counts[cid] > 0:
+                    compartment["temperature"] = round(comp_totals[cid] / comp_counts[cid], 2)
+
+        self._refresh_thermal_state_summary()
 
     def _initialize_npcs(self) -> None:
         names = [
@@ -1844,6 +2013,7 @@ class SimulationEngine:
             snapshot[cid] = {
                 "oxygen_percent": float(compartment.get("oxygen_percent", 0.0)),
                 "pressure": float(compartment.get("pressure", 0.0)),
+                "temperature": float(compartment.get("temperature", SETTINGS.thermal_default_temp_c)),
                 "tile_count": int(compartment.get("tile_count", 0)),
             }
         return snapshot
@@ -1859,6 +2029,7 @@ class SimulationEngine:
             if (
                 current["oxygen_percent"] != previous["oxygen_percent"]
                 or current["pressure"] != previous["pressure"]
+                or current["temperature"] != previous["temperature"]
                 or current["tile_count"] != previous["tile_count"]
             ):
                 changes.append(
@@ -1999,6 +2170,18 @@ class SimulationEngine:
             )
 
         return events
+
+    @staticmethod
+    def _thermal_events(before: dict, after: dict) -> list[dict]:
+        if before == after:
+            return []
+        return [
+            {
+                "type": "thermal_state_change",
+                "previous": before,
+                "current": after,
+            }
+        ]
 
     @staticmethod
     def _neighbors8(x: int, y: int, width: int, height: int) -> list[tuple[int, int]]:

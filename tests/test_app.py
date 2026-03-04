@@ -37,11 +37,13 @@ def test_health_status_world_and_ws_usage_handlers() -> None:
         assert 'tick' in status_payload
         assert 'compartment_count' in status_payload
         assert 'machine_count' in status_payload
+        assert 'thermal_avg_temp_c' in status_payload
 
         world_payload = await world()
         assert 'tick' in world_payload
         assert 'world' in world_payload
         assert 'grid' in world_payload['world']
+        assert 'temperature_grid' in world_payload['world']
 
         ws_usage = await websocket_usage()
         assert 'detail' in ws_usage

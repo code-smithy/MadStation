@@ -2290,3 +2290,75 @@ def test_dead_item_holder_does_not_block_haul_order_conflict_resolution() -> Non
         for c in work_changes
     )
     assert engine.world_state["items"][0].get("holder_npc_id") in {None, "npc-hauler"}
+
+
+def test_phase8a_runtime_status_exposes_thermal_fields() -> None:
+    engine = SimulationEngine()
+    status = engine.runtime_status()
+
+    assert "thermal_avg_temp_c" in status
+    assert "thermal_min_temp_c" in status
+    assert "thermal_max_temp_c" in status
+    assert "thermal_danger_tile_count" in status
+
+
+def test_phase8a_vacuum_exposure_cools_adjacent_tiles() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][20][20] = "Floor"
+    engine.world_state["grid"][20][21] = "Vacuum"
+    engine._ensure_temperature_grid_dimensions()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["temperature_grid"][y][x] = 21.0
+    engine.world_state["temperature_grid"][20][21] = -35.0
+
+    before = engine.world_state["temperature_grid"][20][20]
+    engine._update_temperature()
+    after = engine.world_state["temperature_grid"][20][20]
+
+    assert after < before
+
+
+def test_phase8a_heater_and_cooler_require_power() -> None:
+    engine = SimulationEngine()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    engine.world_state["grid"][25][25] = "Floor"
+    engine.world_state["grid"][25][26] = "Floor"
+    engine._ensure_temperature_grid_dimensions()
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["temperature_grid"][y][x] = 20.0
+
+    engine.world_state["machines"]["25,25"] = {"type": "Heater", "enabled": True, "consume_kw": 2.0}
+    engine.world_state["machines"]["26,25"] = {"type": "Cooler", "enabled": True, "consume_kw": 2.0}
+    engine.world_state["power_state"]["powered_consumers"] = []
+
+    engine._update_temperature()
+    assert engine.world_state["temperature_grid"][25][25] == 20.0
+    assert engine.world_state["temperature_grid"][25][26] == 20.0
+
+    engine.world_state["power_state"]["powered_consumers"] = ["25,25", "26,25"]
+    engine._update_temperature()
+    assert engine.world_state["temperature_grid"][25][25] > 20.0
+    assert engine.world_state["temperature_grid"][25][26] < 20.0
+
+
+def test_phase8a_delta_emits_thermal_state_change_event() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+        ws = FakeWebSocket()
+        await engine.connect(ws)
+
+        await engine._execute_tick()
+
+        deltas = [m for m in ws.messages if m.get("type") == "delta_tick"]
+        assert deltas
+        entity_changes = deltas[-1]["entity_changes"]
+        assert any(change.get("type") == "thermal_state_change" for change in entity_changes)
+
+    asyncio.run(run())
