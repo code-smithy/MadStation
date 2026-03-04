@@ -190,6 +190,8 @@
 9. Add performance profiling pass for >5 concurrent clients.
 10. Add explicit release checklist tying docs, tests, and runtime observability.
 
+Detailed backlog tracking lives in `docs/BACKLOG.md`.
+
 ---
 
 ## Review Notes / Risks

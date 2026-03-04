@@ -189,4 +189,4 @@ Phase 6 is complete for current roadmap scope: configurable snapshot cadence/pat
 
 ## Phase 7 progress
 
-Phase 7 has started with a frontend MVP slice: server-hosted UI at `/`, live grid/status rendering, basic build/deconstruct/work-order controls, and websocket-driven event updates. See `docs/phase7/PHASE7_SPLIT_PLAN.md` and `docs/phase7/USER_SIDE_TESTING.md`.
+Phase 7 has started with a frontend MVP slice: server-hosted UI at `/`, live grid/status rendering, basic build/deconstruct/work-order controls, and websocket-driven event updates. See `docs/phase7/PHASE7_SPLIT_PLAN.md` and `docs/phase7/USER_SIDE_TESTING.md`. Post-Phase-7 follow-ons are tracked in `docs/BACKLOG.md`.
