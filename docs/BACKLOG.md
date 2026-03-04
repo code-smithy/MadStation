@@ -35,12 +35,13 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
   - Tests cover valid/invalid machine and structural placement.
 - **Status:** Completed with machine placement-context validation and explicit rejection reasons (`machine_requires_floor_or_airlock`).
 
-### [ ] P1 — Topology-aware storage access
-- **Problem:** Storage access remains effectively global and can hide logistics complexity.
+### [x] P1 — Topology-aware storage access
+- **Problem (historical):** Storage access was effectively global and could hide logistics complexity.
 - **Goal:** Constrain storage interactions by reachable topology/compartment rules.
 - **Done when:**
   - Haul/store/refine/feed flows respect topology constraints.
   - Tests verify inaccessible storage is not selected/used.
+- **Status:** Completed by path-reachable storage selection in logistics destination routing.
 
 ### [ ] P2 — Deterministic replay/stress harness expansion
 - **Problem:** Replay validation for larger command streams is limited.

@@ -2297,14 +2297,20 @@ class SimulationEngine:
 
     def _nearest_storage_location(self, x: int, y: int) -> dict | None:
         storages = self.world_state.get("storages", [])
+        grid = self.world_state["grid"]
+        width = self.world_state["world"]["width"]
+        height = self.world_state["world"]["height"]
+
         ranked: list[tuple[int, str, dict]] = []
         for storage in storages:
             loc = storage.get("location", {})
             sx, sy = loc.get("x"), loc.get("y")
             if not isinstance(sx, int) or not isinstance(sy, int):
                 continue
-            dist = abs(sx - x) + abs(sy - y)
-            ranked.append((dist, str(storage.get("id", "")), storage))
+            distance = self._path_distance(int(x), int(y), sx, sy, grid, width, height)
+            if distance is None:
+                continue
+            ranked.append((distance, str(storage.get("id", "")), storage))
         if not ranked:
             return None
         ranked.sort(key=lambda item: (item[0], item[1]))

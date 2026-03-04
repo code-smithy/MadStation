@@ -1479,6 +1479,76 @@ def test_phase5_foundation_mine_ice_creates_item_and_haul_order() -> None:
     assert any(change.get("type") == "work_order_created_auto" for change in work_changes)
 
 
+
+
+def test_nearest_storage_location_skips_unreachable_storage() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+
+    # Build corridor to reachable storage; keep a blocked closer storage unreachable.
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(20, 27):
+        engine.world_state["grid"][20][x] = "Floor"
+
+    engine.world_state["storages"] = [
+        {"id": "storage-blocked", "location": {"x": 19, "y": 20}, "inventory": []},
+        {"id": "storage-reachable", "location": {"x": 26, "y": 20}, "inventory": []},
+    ]
+
+    chosen = engine._nearest_storage_location(20, 20)
+    assert chosen == {"x": 26, "y": 20}
+
+
+def test_mine_ice_auto_haul_targets_reachable_storage_only() -> None:
+    engine = SimulationEngine(load_snapshot=False)
+
+    for y in range(50):
+        for x in range(50):
+            engine.world_state["grid"][y][x] = "Wall"
+    for x in range(20, 27):
+        engine.world_state["grid"][20][x] = "Floor"
+
+    engine.world_state["storages"] = [
+        {"id": "storage-blocked", "location": {"x": 19, "y": 20}, "inventory": []},
+        {"id": "storage-reachable", "location": {"x": 26, "y": 20}, "inventory": []},
+    ]
+
+    engine.world_state["npcs"] = [
+        {
+            "id": "npc-miner",
+            "name": "Miner",
+            "x": 20,
+            "y": 20,
+            "speed": 1,
+            "move_accumulator": 0.0,
+            "health": 100.0,
+            "alive": True,
+            "personality": "baseline",
+            "current_work_order_id": "wo-mine-1",
+            "needs": {"hunger": 0.0, "fatigue": 0.0},
+        }
+    ]
+    engine.world_state["work_orders"] = [
+        {
+            "id": "wo-mine-1",
+            "work_type": "MineIce",
+            "status": "Assigned",
+            "assignee_npc_id": "npc-miner",
+            "location": {"x": 20, "y": 20},
+            "created_tick": 0,
+            "progress": 1,
+            "required_progress": 1,
+        }
+    ]
+
+    _, work_order_changes, _ = engine._update_npcs()
+    haul_orders = [o for o in engine.world_state["work_orders"] if o.get("work_type") == "HaulItem"]
+    assert haul_orders
+    assert haul_orders[0].get("destination") == {"x": 26, "y": 20}
+    assert any(c.get("type") == "work_order_created_auto" for c in work_order_changes)
+
+
 def test_phase5_foundation_haul_item_stores_into_storage_inventory() -> None:
     engine = SimulationEngine()
     engine.world_state["npcs"] = [
