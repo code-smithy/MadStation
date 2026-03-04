@@ -56,6 +56,7 @@ class CommandAck:
     result: CommandResult
     tick: int
     server_sequence_id: int | None = None
+    rejection_reason: str | None = None
     type: str = "command_ack"
 
     def model_dump(self) -> dict[str, Any]:
