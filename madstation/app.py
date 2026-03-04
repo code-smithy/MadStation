@@ -39,6 +39,13 @@ async def frontend_index() -> HTMLResponse:
         return HTMLResponse(FRONTEND_INDEX_PATH.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>MadStation UI missing</h1>", status_code=500)
 
+
+@app.get("/", response_class=HTMLResponse)
+async def frontend_index() -> HTMLResponse:
+    if FRONTEND_INDEX_PATH.exists():
+        return HTMLResponse(FRONTEND_INDEX_PATH.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>MadStation UI missing</h1>", status_code=500)
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
