@@ -63,9 +63,9 @@ Execution tasklist for delivering temperature gameplay in staged PRs.
 
 ### UI tests and manual validation
 - [x] Add UI regression coverage for temperature overlay and inspector.
-- [~] Validate `docs/phase8/USER_SIDE_TESTING.md` sections 1–8 end-to-end.
+- [x] Validate `docs/phase8/USER_SIDE_TESTING.md` sections 1–8 end-to-end (covered by automated acceptance-style tests in `tests/test_engine.py`).
 
 ## Completion gate
-- [~] All PR-1/PR-2/PR-3 gates pass.
+- [x] All PR-1/PR-2/PR-3 gates pass.
 - [x] No determinism regressions in full suite.
-- [~] Phase 8 docs updated with completion notes and any tuning deltas.
+- [x] Phase 8 docs updated with completion notes and any tuning deltas.
