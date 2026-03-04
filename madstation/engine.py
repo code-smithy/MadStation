@@ -186,8 +186,14 @@ class SimulationEngine:
             self.command_ack_cache[session_id][command.client_command_id] = ack
             return ack
 
-        if not self._validate_command_payload(command):
-            ack = CommandAck(client_command_id=command.client_command_id, result=CommandResult.INVALID_PAYLOAD, tick=self.tick)
+        is_valid, invalid_reason = self._validate_command_payload(command)
+        if not is_valid:
+            ack = CommandAck(
+                client_command_id=command.client_command_id,
+                result=CommandResult.INVALID_PAYLOAD,
+                tick=self.tick,
+                rejection_reason=invalid_reason or "invalid_payload",
+            )
             self.command_ack_cache[session_id][command.client_command_id] = ack
             return ack
 
@@ -621,24 +627,39 @@ class SimulationEngine:
     def _validate_xy(x: object, y: object) -> bool:
         return isinstance(x, int) and isinstance(y, int) and (0 <= x < 50) and (0 <= y < 50)
 
-    def _validate_command_payload(self, command: ClientCommand) -> bool:
+    def _validate_command_payload(self, command: ClientCommand) -> tuple[bool, str | None]:
         payload = command.payload
         if command.type in {CommandType.BUILD, CommandType.DECONSTRUCT}:
-            if not self._validate_xy(payload.get("x"), payload.get("y")):
-                return False
+            x, y = payload.get("x"), payload.get("y")
+            if not self._validate_xy(x, y):
+                return False, "invalid_xy"
+
             if command.type is CommandType.BUILD and "tile_type" in payload:
                 tile_type = payload.get("tile_type")
                 if not (isinstance(tile_type, str) and tile_type in (ALL_TILE_TYPES - {TILE_VACUUM})):
-                    return False
+                    return False, "invalid_tile_type"
+
             machine = payload.get("machine")
             if machine is None:
-                return True
-            return self._validate_machine_payload(machine)
+                return True, None
+            if command.type is not CommandType.BUILD:
+                return False, "machine_not_allowed_for_command"
+            if not self._validate_machine_payload(machine):
+                return False, "invalid_machine_payload"
+
+            tx, ty = int(x), int(y)
+            target_tile = payload.get("tile_type")
+            if not isinstance(target_tile, str):
+                target_tile = self.world_state["grid"][ty][tx]
+            if target_tile not in {TILE_FLOOR, TILE_AIRLOCK}:
+                return False, "machine_requires_floor_or_airlock"
+
+            return True, None
 
         if command.type is CommandType.CREATE_WORK_ORDER:
-            return self._validate_work_order_payload(payload)
+            return (True, None) if self._validate_work_order_payload(payload) else (False, "invalid_work_order_payload")
 
-        return False
+        return False, "unsupported_command_type"
 
     def _validate_work_order_payload(self, payload: dict) -> bool:
         work_type = payload.get("work_type")

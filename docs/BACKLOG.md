@@ -26,12 +26,13 @@ This backlog tracks work intentionally deferred after Phase 7 completion.
   - Powered/unpowered door transitions are deterministic across replay.
   - Tests cover power-loss close/open behavior and compartment effects.
 
-### [ ] P1 — Enforce placement constraints
-- **Problem:** Build placement still allows future-ready invalid placements.
+### [x] P1 — Enforce placement constraints
+- **Problem (historical):** Build placement allowed future-ready invalid placements.
 - **Goal:** Reject invalid placements at command validation/apply time.
 - **Done when:**
   - Build command fails with explicit reason for invalid tiles/contexts.
   - Tests cover valid/invalid machine and structural placement.
+- **Status:** Completed with machine placement-context validation and explicit rejection reasons (`machine_requires_floor_or_airlock`).
 
 ### [ ] P1 — Topology-aware storage access
 - **Problem:** Storage access remains effectively global and can hide logistics complexity.

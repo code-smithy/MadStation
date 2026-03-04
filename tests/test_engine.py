@@ -513,6 +513,47 @@ def test_build_rejects_invalid_machine_payload() -> None:
     asyncio.run(run())
 
 
+def test_build_machine_requires_floor_or_airlock_context() -> None:
+    async def run() -> None:
+        engine = SimulationEngine()
+
+        # Existing wall tile with machine payload should be rejected.
+        wall_machine = ClientCommand(
+            client_command_id="bad-machine-context-1",
+            type=CommandType.BUILD,
+            payload={"x": 14, "y": 14, "machine": {"type": "OxygenGenerator", "rate_per_tick": 3.0}},
+        )
+        ack1 = await engine.enqueue_command("anon-test", wall_machine)
+        assert ack1.result == CommandResult.INVALID_PAYLOAD
+        assert ack1.rejection_reason == "machine_requires_floor_or_airlock"
+
+        # Explicit non-floor placement with machine should also be rejected.
+        explicit_wall_machine = ClientCommand(
+            client_command_id="bad-machine-context-2",
+            type=CommandType.BUILD,
+            payload={
+                "x": 15,
+                "y": 15,
+                "tile_type": "Wall",
+                "machine": {"type": "Heater", "consume_kw": 2.0},
+            },
+        )
+        ack2 = await engine.enqueue_command("anon-test-2", explicit_wall_machine)
+        assert ack2.result == CommandResult.INVALID_PAYLOAD
+        assert ack2.rejection_reason == "machine_requires_floor_or_airlock"
+
+        # Existing floor tile with machine payload remains valid.
+        valid_floor_machine = ClientCommand(
+            client_command_id="good-machine-context",
+            type=CommandType.BUILD,
+            payload={"x": 20, "y": 20, "machine": {"type": "Heater", "consume_kw": 2.0}},
+        )
+        ack3 = await engine.enqueue_command("anon-test-3", valid_floor_machine)
+        assert ack3.result == CommandResult.QUEUED
+
+    asyncio.run(run())
+
+
 def test_power_load_shedding_disables_low_priority_consumers() -> None:
     async def run() -> None:
         engine = SimulationEngine()
